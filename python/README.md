@@ -92,6 +92,27 @@ This one-shot collector fetches recent CoinDCX public candle data for active spo
 
 This is not the continuous monitor yet. It does not calculate metrics, score symbols, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
 
+
+## Run One-Shot Orderbook Liquidity Collection
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_orderbook_collection_once.py --quote USDT --limit 10
+```
+
+Run with a custom slippage target in the pair quote currency:
+
+```bash
+python scripts/run_orderbook_collection_once.py --quote USDT --limit 10 --target-notional 100
+```
+
+This one-shot collector fetches CoinDCX public orderbook data using `spot_symbols.api_pair`, for example `B-BTC_USDT`. It stores best bid, best ask, spread percent, orderbook depth, and a simple market-buy slippage estimate in `scanner_metrics`.
+
+Depth is stored in the existing `orderbook_depth_usdt` column, but for now the value is in the pair quote currency, such as USDT or INR depending on the symbol quote asset.
+
+This is not the continuous monitor yet. It does not calculate the full scanner score, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
+
 ## Safety Notes
 
 - CoinDCX integration is public-only.
@@ -122,7 +143,7 @@ python scripts/test_market_pair_resolution.py
 python scripts/run_candle_collection_once.py --limit 3 --timeframes 1m
 ```
 
-The next orderbook/liquidity task is expected to add an orderbook collector command that also uses `api_pair`:
+Validate orderbook liquidity collection from the Python directory:
 
 ```bash
 python scripts/run_orderbook_collection_once.py --quote USDT --limit 3 --target-notional 100
