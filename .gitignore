@@ -8,3 +8,9 @@
 /.env
 /.env.*
 !.env.example
+python/.env
+python/venv/
+python/__pycache__/
+python/**/__pycache__/
+python/logs/*.log
+!python/logs/.gitkeep
