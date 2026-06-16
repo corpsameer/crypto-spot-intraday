@@ -1,0 +1,304 @@
+import json
+import uuid
+from datetime import datetime
+
+from cryptospot.coindcx_client import CoinDCXPublicClient
+from cryptospot.db import execute, fetch_all, fetch_one, get_connection
+from cryptospot.health import write_health_log
+from cryptospot.settings import get_settings_by_group
+
+SERVICE_NAME = "scan_runner"
+
+
+def normalize_symbol(value: str) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().upper().replace("/", "").replace("_", "").replace("-", "")
+
+
+def safe_float(value, default=None):
+    if value is None or value == "":
+        return default
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def extract_ticker_symbol(row: dict) -> str | None:
+    if not isinstance(row, dict):
+        return None
+    for key in ("market", "symbol", "pair", "coindcx_name"):
+        symbol = normalize_symbol(row.get(key))
+        if symbol:
+            return symbol
+    return None
+
+
+def _first_float(row: dict, keys: tuple[str, ...]):
+    for key in keys:
+        value = safe_float(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def normalize_ticker_row(row: dict) -> dict:
+    symbol = extract_ticker_symbol(row)
+    last_price = _first_float(row, ("last_price", "last", "price", "close"))
+    bid_price = _first_float(row, ("bid", "best_bid", "bid_price"))
+    ask_price = _first_float(row, ("ask", "best_ask", "ask_price"))
+    spread_percent = None
+
+    if bid_price and ask_price:
+        mid = (bid_price + ask_price) / 2
+        if mid:
+            spread_percent = ((ask_price - bid_price) / mid) * 100
+
+    return {
+        "symbol": symbol,
+        "last_price": last_price,
+        "high_24h": _first_float(row, ("high", "high_24h")),
+        "low_24h": _first_float(row, ("low", "low_24h")),
+        "volume_24h": _first_float(row, ("volume", "volume_24h")),
+        "quote_volume_24h": _first_float(row, ("quote_volume", "quote_volume_24h")),
+        "change_24h_percent": _first_float(row, ("change_24_hour", "change_24h", "change_24h_percent", "percent_change")),
+        "bid_price": bid_price,
+        "ask_price": ask_price,
+        "spread_percent": spread_percent,
+        "raw": row,
+    }
+
+
+class ScanRunner:
+    def __init__(self, client: CoinDCXPublicClient = None):
+        self.client = client or CoinDCXPublicClient()
+
+    def run_manual_scan(self, scan_name: str = None, quote_filter: str = None, limit: int = None) -> dict:
+        started = datetime.now()
+        summary = {
+            "scan_run_id": None,
+            "run_uuid": None,
+            "scan_type": "manual",
+            "scan_name": scan_name or "Manual Scan",
+            "status": "completed",
+            "quote_filter": None,
+            "active_symbols": 0,
+            "ticker_rows_fetched": 0,
+            "matched_symbols": 0,
+            "scan_results_created": 0,
+            "duration_seconds": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+        try:
+            settings_snapshot = self._load_settings_snapshot()
+            resolved_quote_filter = self._resolve_quote_filter(quote_filter, settings_snapshot["scan"].get("scan.default_quote_filter"))
+            summary["quote_filter"] = resolved_quote_filter
+
+            if not bool(settings_snapshot["scan"].get("scan.enabled", True)):
+                summary["status"] = "disabled"
+                message = "Scan workflow is disabled"
+                summary["errors"].append(message)
+                self._write_health("warning", message, summary)
+                return summary
+
+            if not bool(settings_snapshot["scan"].get("scan.allow_manual_scan", True)):
+                summary["status"] = "rejected"
+                message = "Manual scans are disabled"
+                summary["errors"].append(message)
+                self._write_health("warning", message, summary)
+                return summary
+
+            if bool(settings_snapshot["scan"].get("scan.prevent_overlap", True)):
+                running_scan = self._find_running_scan()
+                if running_scan:
+                    summary["status"] = "skipped"
+                    summary["skipped"] = 1
+                    message = "Another scan is already running"
+                    summary["errors"].append(message)
+                    self._write_health("warning", message, {**summary, "running_scan": running_scan})
+                    return summary
+
+            run_uuid = str(uuid.uuid4())
+            summary["run_uuid"] = run_uuid
+            summary["scan_run_id"] = self._create_scan_run(run_uuid, summary["scan_name"], resolved_quote_filter, settings_snapshot)
+
+            active_symbols = self._load_active_symbols(resolved_quote_filter, limit)
+            summary["active_symbols"] = len(active_symbols)
+
+            ticker_rows = self._coerce_ticker_rows(self.client.ticker())
+            summary["ticker_rows_fetched"] = len(ticker_rows)
+
+            tickers_by_symbol = {}
+            for row in ticker_rows:
+                try:
+                    normalized = normalize_ticker_row(row)
+                    if not normalized["symbol"]:
+                        summary["skipped"] += 1
+                        continue
+                    tickers_by_symbol[normalized["symbol"]] = normalized
+                except Exception as exc:
+                    summary["skipped"] += 1
+                    summary["errors"].append(f"Skipped malformed ticker row: {exc}")
+
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for symbol, spot_symbol in active_symbols.items():
+                ticker = tickers_by_symbol.get(symbol)
+                if ticker is None:
+                    continue
+                summary["matched_symbols"] += 1
+                try:
+                    self._insert_scan_result(summary["scan_run_id"], spot_symbol, ticker, now, resolved_quote_filter)
+                    summary["scan_results_created"] += 1
+                except Exception as exc:
+                    summary["errors"].append(f"Failed to insert scan_result for {spot_symbol.get('coindcx_symbol')}: {exc}")
+
+            summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
+            self._mark_scan_completed(summary)
+            self._write_health(
+                "ok",
+                f"scan_run_id={summary['scan_run_id']}, matched_symbols={summary['matched_symbols']}, scan_results_created={summary['scan_results_created']}",
+                summary,
+            )
+            return summary
+        except Exception as exc:
+            summary["status"] = "failed"
+            summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
+            summary["errors"].append(str(exc))
+            if summary.get("scan_run_id"):
+                try:
+                    self._mark_scan_failed(summary, str(exc))
+                except Exception:
+                    pass
+            self._write_health("error", str(exc), summary)
+            return summary
+
+    def _load_settings_snapshot(self) -> dict:
+        return {
+            "scan": get_settings_by_group("scan"),
+            "prefilter": get_settings_by_group("prefilter"),
+            "trade_plan": get_settings_by_group("trade_plan"),
+        }
+
+    def _resolve_quote_filter(self, cli_quote_filter, default_quote_filter):
+        value = cli_quote_filter if cli_quote_filter is not None else default_quote_filter
+        if value is None or str(value).strip().upper() == "ALL":
+            return None
+        return str(value).strip().upper()
+
+    def _find_running_scan(self):
+        return fetch_one("""
+            SELECT id, run_uuid, started_at
+            FROM scan_runs
+            WHERE status = 'running'
+            ORDER BY started_at DESC
+            LIMIT 1
+        """)
+
+    def _create_scan_run(self, run_uuid, scan_name, quote_filter, settings_snapshot):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        connection = get_connection()
+        cursor = None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO scan_runs
+                    (run_uuid, scan_type, scan_name, status, started_at, quote_filter,
+                     settings_snapshot, notes, created_at, updated_at)
+                VALUES
+                    (%s, 'manual', %s, 'running', %s, %s, %s, %s, %s, %s)
+                """,
+                (run_uuid, scan_name, now, quote_filter, json.dumps(settings_snapshot, separators=(",", ":"), default=str), "Manual scan skeleton run", now, now),
+            )
+            connection.commit()
+            return cursor.lastrowid
+        finally:
+            if cursor:
+                cursor.close()
+            connection.close()
+
+    def _load_active_symbols(self, quote_filter, limit):
+        rows = fetch_all("""
+            SELECT id, coindcx_symbol, api_pair, base_asset, quote_asset, is_active
+            FROM spot_symbols
+            WHERE is_active = 1
+            ORDER BY coindcx_symbol ASC
+        """)
+        filtered = []
+        for row in rows:
+            if quote_filter and str(row.get("quote_asset") or "").upper() != quote_filter:
+                continue
+            filtered.append(row)
+            if limit is not None and len(filtered) >= int(limit):
+                break
+        return {normalize_symbol(row.get("coindcx_symbol")): row for row in filtered if normalize_symbol(row.get("coindcx_symbol"))}
+
+    def _coerce_ticker_rows(self, ticker_response) -> list:
+        if isinstance(ticker_response, list):
+            return [row for row in ticker_response if isinstance(row, dict)]
+        if isinstance(ticker_response, dict):
+            for key in ("data", "tickers", "ticker", "result"):
+                value = ticker_response.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
+
+    def _insert_scan_result(self, scan_run_id, spot_symbol, ticker, now, quote_filter):
+        raw_payload = {
+            "ticker": ticker,
+            "scan": {"type": "manual", "quote_filter": quote_filter, "stage": "ticker", "skeleton": True},
+        }
+        return execute(
+            """
+            INSERT INTO scan_results
+                (scan_run_id, spot_symbol_id, coindcx_symbol, api_pair, base_asset, quote_asset,
+                 status, stage, prefilter_passed, score_passed, candidate_created, trade_plan_created,
+                 last_price, change_24h_percent, quote_volume_24h, spread_percent, evaluated_at,
+                 raw_payload, created_at, updated_at)
+            VALUES
+                (%s, %s, %s, %s, %s, %s, 'discovered', 'ticker', 0, 0, 0, 0,
+                 %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                scan_run_id, spot_symbol.get("id"), spot_symbol.get("coindcx_symbol"), spot_symbol.get("api_pair"),
+                spot_symbol.get("base_asset"), spot_symbol.get("quote_asset"), ticker.get("last_price"),
+                ticker.get("change_24h_percent"), ticker.get("quote_volume_24h"), ticker.get("spread_percent"),
+                now, json.dumps(raw_payload, separators=(",", ":"), default=str), now, now,
+            ),
+        )
+
+    def _mark_scan_completed(self, summary):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            """
+            UPDATE scan_runs
+            SET status = 'completed', completed_at = %s, duration_seconds = %s,
+                total_active_symbols = %s, ticker_rows_fetched = %s,
+                prefilter_passed_count = 0, candles_fetched_count = 0, metrics_calculated_count = 0,
+                scored_count = 0, watchlist_created_count = 0, trade_plans_created_count = 0,
+                raw_payload = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (now, summary["duration_seconds"], summary["active_symbols"], summary["ticker_rows_fetched"], json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"]),
+        )
+
+    def _mark_scan_failed(self, summary, error_message):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            """
+            UPDATE scan_runs
+            SET status = 'failed', completed_at = %s, duration_seconds = %s,
+                error_message = %s, raw_payload = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (now, summary["duration_seconds"], error_message, json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"]),
+        )
+
+    def _write_health(self, status, message, meta):
+        try:
+            write_health_log(SERVICE_NAME, status, message, meta)
+        except Exception:
+            pass

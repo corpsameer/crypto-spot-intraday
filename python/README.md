@@ -234,3 +234,24 @@ Verify the Python settings reader from inside the `python` folder:
 ```bash
 python scripts/test_scan_settings.py
 ```
+
+## Run Manual Scan Skeleton
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_manual_scan_once.py --name "Manual Test Scan" --quote USDT --limit 20
+```
+
+This manual scan skeleton prepares the scheduled/manual scan workflow for later prefiltering and scoring tasks:
+
+- It creates a `scan_runs` row with `scan_type = manual` and `status = running`, then marks it `completed` or `failed`.
+- It respects `scan.enabled`, `scan.allow_manual_scan`, `scan.prevent_overlap`, and `scan.default_quote_filter` settings from `app_settings`.
+- It prevents overlapping manual scans when `scan.prevent_overlap` is enabled and a `scan_runs.status = running` row already exists.
+- It loads active rows from `spot_symbols`, applies the quote filter and optional CLI limit, and matches tickers using normalized `coindcx_symbol` values.
+- It fetches CoinDCX ticker data once for the scan through the public `CoinDCXPublicClient.ticker()` endpoint.
+- It creates basic `scan_results` rows for matched symbols with `status = discovered`, `stage = ticker`, and all future workflow flags set to false.
+- It updates scan run summary counts including `total_active_symbols`, `ticker_rows_fetched`, and the zeroed future workflow counters.
+- It writes a `scan_runner` entry to `system_health_logs`.
+
+This is intentionally only an orchestration skeleton. It does not prefilter yet, does not fetch candles yet, does not calculate metrics or scoring yet, does not create candidates or trade plans yet, and does not run continuously. It also does not place trades, use private CoinDCX APIs, require API keys, create simulated trades, or monitor active trades.
