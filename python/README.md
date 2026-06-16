@@ -168,3 +168,17 @@ The cleanup deletes old rows from `candles`, `scanner_metrics`, `market_snapshot
 The cleanup never deletes `spot_symbols`, `candidate_watchlists`, `simulated_trades`, `trade_events`, or `missed_gainers`. It writes a `data_cleanup` entry to `system_health_logs` with the cleanup summary.
 
 Use `--dry-run` first to count rows that would be deleted without changing the database, then run without `--dry-run` when you are ready to remove old time-series rows.
+
+## Run One-Shot Metrics Engine
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_metrics_once.py --quote USDT --limit 10
+```
+
+This one-shot metrics engine calculates candle-based scanner metrics for active spot symbols and inserts fresh rows into `scanner_metrics`. It uses recent `candles`, merges the latest ticker snapshot metrics, merges latest orderbook/liquidity metrics, and includes the latest BTC/ETH market context from `market_snapshots` when available.
+
+Calculated metrics include short-term price changes, volume spikes, distance from the 24h high, candle close strength, upper/lower wick percentages, relative strength versus BTC, and a simple placeholder overextension risk.
+
+This prepares data for a future scoring engine only. It does not calculate `final_score`, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
