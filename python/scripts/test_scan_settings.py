@@ -113,6 +113,9 @@ def main() -> int:
             "Scan settings loaded successfully",
             {"groups": group_counts, "settings_checked": len(SETTING_KEYS)},
         )
+
+        print("\nValidation passed")
+        print(f"Health log written: service_name={SERVICE_NAME}, status=ok")
         return 0
     except Exception as exc:
         message = str(exc)
@@ -124,6 +127,7 @@ def main() -> int:
                 message,
                 {"groups": group_counts or GROUPS, "settings_checked": len(SETTING_KEYS)},
             )
+            print(f"Health log written: service_name={SERVICE_NAME}, status=error")
         except Exception as health_exc:
             print(f"ERROR: failed to write health log: {health_exc}", file=sys.stderr)
         return 1
