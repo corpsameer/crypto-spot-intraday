@@ -150,3 +150,23 @@ The next orderbook/liquidity task is expected to add this command, which should 
 ```bash
 python scripts/run_orderbook_collection_once.py --quote USDT --limit 3 --target-notional 100
 ```
+
+## Scheduled Scan Workflow
+
+The MVP workflow is scan-based rather than a continuous all-coin scanner. Full-market scans run manually or at configured scan times later, such as 9:00 AM IST, 2:00 PM IST, 7:00 PM IST, and 10:30 PM IST.
+
+The planned workflow is:
+
+```text
+scan_run -> scan_results -> candidate_watchlist -> trade_plan -> simulated_trade -> trade_events -> analytics
+```
+
+Task 10.1 adds the database foundation for this workflow with these tables:
+
+- `scan_runs` stores each manual or scheduled full-market scan execution and its summary counts/config snapshot.
+- `scan_results` stores per-symbol scan outcomes, including prefilter status, copied metric fields, scoring placeholders, and suggested trade setup fields.
+- `trade_plans` stores pending scanner/manual trade setups before any simulated trade is triggered.
+
+Between full scans, the MVP should not continuously fetch candles, score every coin, or poll orderbooks for the full market. Later continuous processes may monitor only shortlisted candidates, pending trade plans, active simulated trades, and system health. Active simulated trades may be monitored continuously because TP, SL, trailing stops, and expiry can happen at any time.
+
+This section documents schema support only. It does not add a scan runner, prefilter engine, scoring, candidate creation, trade-plan trigger monitoring, simulated trade creation, CoinDCX private APIs, API keys, or real trading.
