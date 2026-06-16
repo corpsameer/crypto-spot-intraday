@@ -46,6 +46,8 @@ class CandidateWatchlist extends Model
 
     public function spotSymbol(): BelongsTo { return $this->belongsTo(SpotSymbol::class); }
     public function scannerMetric(): BelongsTo { return $this->belongsTo(ScannerMetric::class); }
+    public function scanResults(): HasMany { return $this->hasMany(ScanResult::class); }
+    public function tradePlans(): HasMany { return $this->hasMany(TradePlan::class); }
     public function simulatedTrade(): HasOne { return $this->hasOne(SimulatedTrade::class); }
 
 }

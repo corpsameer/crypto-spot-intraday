@@ -80,5 +80,6 @@ class ScannerMetric extends Model
 
 
     public function spotSymbol(): BelongsTo { return $this->belongsTo(SpotSymbol::class); }
+    public function scanResults(): HasMany { return $this->hasMany(ScanResult::class); }
 
 }

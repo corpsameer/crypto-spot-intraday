@@ -79,6 +79,7 @@ class SimulatedTrade extends Model
 
     public function spotSymbol(): BelongsTo { return $this->belongsTo(SpotSymbol::class); }
     public function candidateWatchlist(): BelongsTo { return $this->belongsTo(CandidateWatchlist::class); }
+    public function tradePlan(): HasOne { return $this->hasOne(TradePlan::class); }
     public function tradeEvents(): HasMany { return $this->hasMany(TradeEvent::class); }
 
 }
