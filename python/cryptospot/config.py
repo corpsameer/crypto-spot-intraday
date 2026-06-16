@@ -13,4 +13,5 @@ DB_USERNAME = os.getenv("DB_USERNAME", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 COINDCX_PUBLIC_BASE_URL = os.getenv("COINDCX_PUBLIC_BASE_URL", "https://api.coindcx.com")
+COINDCX_CANDLE_BASE_URL = os.getenv("COINDCX_CANDLE_BASE_URL", "https://public.coindcx.com")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

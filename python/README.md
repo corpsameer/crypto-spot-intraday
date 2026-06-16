@@ -74,6 +74,24 @@ This one-shot collector fetches the latest CoinDCX public ticker values and stor
 
 This is not the continuous monitor yet. It does not place trades, use private CoinDCX APIs, require API keys, create candidates, score symbols, or create simulated trades.
 
+## Run One-Shot Candle Collection
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_candle_collection_once.py --limit 10
+```
+
+Run selected timeframes only:
+
+```bash
+python scripts/run_candle_collection_once.py --limit 5 --timeframes 5m,15m,1h
+```
+
+This one-shot collector fetches recent CoinDCX public candle data for active spot symbols and stores it in the `candles` table. It writes a `candle_collector` health log entry and uses public market data only.
+
+This is not the continuous monitor yet. It does not calculate metrics, score symbols, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
+
 ## Safety Notes
 
 - CoinDCX integration is public-only.
