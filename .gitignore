@@ -4,3 +4,7 @@
 /storage/logs/*.log
 /storage/framework/cache/data/*
 /bootstrap/cache/*.php
+
+/.env
+/.env.*
+!.env.example
