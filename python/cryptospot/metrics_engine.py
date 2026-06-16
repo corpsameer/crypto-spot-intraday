@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from cryptospot.db import execute, fetch_all, fetch_one
+from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 
@@ -85,6 +85,248 @@ class MetricsEngine:
             summary["errors"].append(str(exc))
             write_health_log(SERVICE_NAME, "error", str(exc), summary)
             raise
+
+
+    def run_for_scan_run(self, scan_run_id: int, limit: int = None) -> dict:
+        summary = {
+            "scan_run_id": scan_run_id,
+            "eligible_scan_results": 0,
+            "symbols_processed": 0,
+            "metrics_inserted": 0,
+            "scan_results_updated": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+        try:
+            scan_run = fetch_one("SELECT id FROM scan_runs WHERE id = %s LIMIT 1", (scan_run_id,))
+            if not scan_run:
+                summary["errors"].append(f"scan_run_id={scan_run_id} not found")
+                write_health_log("scan_metrics_engine", "error", f"scan_run_id={scan_run_id} not found", summary)
+                return summary
+
+            scan_results = self._load_eligible_scan_results(scan_run_id)
+            summary["eligible_scan_results"] = len(scan_results)
+            if limit is not None:
+                scan_results = scan_results[: max(int(limit), 0)]
+
+            market_snapshot = self._load_latest_market_snapshot()
+
+            for scan_result in scan_results:
+                symbol = scan_result.get("coindcx_symbol")
+                scan_result_id = scan_result.get("scan_result_id")
+                try:
+                    if not scan_result.get("spot_symbol_id"):
+                        self._mark_scan_result_failed(scan_result_id, "missing_spot_symbol_id")
+                        summary["skipped"] += 1
+                        summary["errors"].append(f"{symbol}: missing_spot_symbol_id")
+                        continue
+
+                    inserted_id = self._process_scan_result(scan_result, market_snapshot)
+                    if inserted_id:
+                        summary["symbols_processed"] += 1
+                        summary["metrics_inserted"] += 1
+                        summary["scan_results_updated"] += 1
+                    else:
+                        self._mark_scan_result_failed(scan_result_id, "metrics_missing_candles")
+                        summary["skipped"] += 1
+                        summary["errors"].append(f"{symbol}: metrics_missing_candles")
+                except Exception as exc:
+                    summary["skipped"] += 1
+                    summary["errors"].append(f"{symbol}: {exc}")
+                    logger.exception("Scan metrics failed for %s scan_result_id=%s", symbol, scan_result_id)
+
+            self._update_scan_run_metrics_summary(scan_run_id, summary)
+            status = "warning" if summary["skipped"] or summary["errors"] else "ok"
+            write_health_log(
+                "scan_metrics_engine",
+                status,
+                f"scan_run_id={scan_run_id}, symbols_processed={summary['symbols_processed']}, metrics_inserted={summary['metrics_inserted']}, skipped={summary['skipped']}, errors={len(summary['errors'])}",
+                summary,
+            )
+            return summary
+        except Exception as exc:
+            summary["errors"].append(str(exc))
+            write_health_log("scan_metrics_engine", "error", str(exc), summary)
+            return summary
+
+    def _load_eligible_scan_results(self, scan_run_id: int) -> list[dict]:
+        return fetch_all(
+            """
+            SELECT
+                sr.id AS scan_result_id,
+                sr.scan_run_id,
+                sr.spot_symbol_id,
+                sr.coindcx_symbol,
+                sr.api_pair,
+                sr.base_asset,
+                sr.quote_asset,
+                sr.last_price,
+                sr.change_24h_percent AS ticker_change_24h_percent,
+                sr.quote_volume_24h,
+                sr.spread_percent AS ticker_spread_percent
+            FROM scan_results sr
+            WHERE sr.scan_run_id = %s
+              AND sr.prefilter_passed = 1
+              AND sr.status = 'candles_fetched'
+            ORDER BY sr.quote_volume_24h DESC, sr.change_24h_percent DESC, sr.id ASC
+            """,
+            (scan_run_id,),
+        )
+
+    def _process_scan_result(self, scan_result: dict, market_snapshot: dict | None) -> int | None:
+        candles = {timeframe: self._load_candles(scan_result["spot_symbol_id"], timeframe, limit) for timeframe, limit in TIMEFRAME_LIMITS.items()}
+        if not any(candles.values()):
+            return None
+
+        symbol = scan_result.get("coindcx_symbol")
+        orderbook = self._load_latest_orderbook_metric(symbol)
+        latest_candle = self._latest_candle(candles)
+        latest_close = safe_float(latest_candle.get("close")) if latest_candle else safe_float(scan_result.get("last_price"))
+
+        change_5m = self._first_available(self._change_percent(candles.get("1m"), timedelta(minutes=5)), self._previous_change(candles.get("5m")))
+        change_15m = self._first_available(self._change_percent(candles.get("5m"), timedelta(minutes=15)), self._change_percent(candles.get("1m"), timedelta(minutes=15)))
+        change_1h = self._first_available(self._change_percent(candles.get("15m"), timedelta(hours=1)), self._change_percent(candles.get("5m"), timedelta(hours=1)))
+        change_4h = self._change_percent(candles.get("1h"), timedelta(hours=4))
+        change_24h = self._change_percent(candles.get("1h"), timedelta(hours=24))
+        if change_24h is None:
+            change_24h = safe_float(scan_result.get("ticker_change_24h_percent"))
+
+        volume_spike_15m = self._first_available(self._volume_spike(candles.get("5m"), 3), self._volume_spike(candles.get("1m"), 15))
+        volume_spike_1h = self._first_available(self._volume_spike(candles.get("15m"), 4), self._volume_spike(candles.get("5m"), 12))
+        distance_24h = self._first_available(self._distance_from_24h_high(candles.get("1h"), latest_close), self._distance_from_24h_high(candles.get("15m"), latest_close))
+        wick_candle = (candles.get("15m") or candles.get("5m") or [None])[-1]
+        candle_close_strength, upper_wick, lower_wick = self._candle_shape_metrics(wick_candle)
+        relative_strength = self._relative_strength(change_1h, change_24h, market_snapshot)
+
+        spread = safe_float(orderbook.get("spread_percent")) if orderbook else safe_float(scan_result.get("ticker_spread_percent"))
+        bid_price = orderbook.get("bid_price") if orderbook else None
+        ask_price = orderbook.get("ask_price") if orderbook else None
+        depth = orderbook.get("orderbook_depth_usdt") if orderbook else None
+        slippage = orderbook.get("slippage_estimate_percent") if orderbook else None
+        overextension_risk = self._overextension_risk(change_15m, change_1h, upper_wick, spread)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        metrics = {
+            "change_5m_percent": change_5m,
+            "change_15m_percent": change_15m,
+            "change_1h_percent": change_1h,
+            "change_4h_percent": change_4h,
+            "change_24h_percent": change_24h,
+            "volume_spike_15m": volume_spike_15m,
+            "volume_spike_1h": volume_spike_1h,
+            "quote_volume_24h": safe_float(scan_result.get("quote_volume_24h")),
+            "spread_percent": spread,
+            "bid_price": bid_price,
+            "ask_price": ask_price,
+            "orderbook_depth_usdt": depth,
+            "slippage_estimate_percent": slippage,
+            "distance_from_24h_high_percent": distance_24h,
+            "candle_close_strength": candle_close_strength,
+            "upper_wick_percent": upper_wick,
+            "lower_wick_percent": lower_wick,
+            "relative_strength_vs_btc": relative_strength,
+            "btc_context": self._context_text("BTC", market_snapshot),
+            "eth_context": self._context_text("ETH", market_snapshot),
+            "market_condition": market_snapshot.get("market_condition") if market_snapshot else None,
+            "overextension_risk": overextension_risk,
+        }
+        raw_payload = {
+            "source": "scan_based_metrics",
+            "scan_run_id": scan_result.get("scan_run_id"),
+            "scan_result_id": scan_result.get("scan_result_id"),
+            "source_candle_counts": {tf: len(rows) for tf, rows in candles.items()},
+            "latest_close": latest_close,
+            "selected_wick_candle": self._compact_candle(wick_candle),
+            "latest_orderbook_metric": self._metric_ref(orderbook),
+            "latest_market_snapshot_time": market_snapshot.get("snapshot_time") if market_snapshot else None,
+            "calculated_metrics": metrics,
+        }
+        metric_id = self._insert_scanner_metric(scan_result, metrics, raw_payload, now)
+        self._update_scan_result_with_metrics(scan_result.get("scan_result_id"), metric_id, metrics, raw_payload, now)
+        return metric_id
+
+    def _insert_scanner_metric(self, scan_result: dict, metrics: dict, raw_payload: dict, now: str) -> int:
+        connection = get_connection()
+        cursor = None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO scanner_metrics
+                    (spot_symbol_id, coindcx_symbol, metric_time,
+                     change_5m_percent, change_15m_percent, change_1h_percent, change_4h_percent, change_24h_percent,
+                     volume_spike_15m, volume_spike_1h, quote_volume_24h,
+                     spread_percent, bid_price, ask_price, orderbook_depth_usdt, slippage_estimate_percent,
+                     distance_from_24h_high_percent, candle_close_strength, upper_wick_percent, lower_wick_percent,
+                     relative_strength_vs_btc, btc_context, eth_context, market_condition,
+                     overextension_risk, risk_penalty, final_score, score_label,
+                     passes_watchlist, passes_strong, rejection_reason, raw_payload, created_at, updated_at)
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    scan_result.get("spot_symbol_id"), scan_result.get("coindcx_symbol"), now,
+                    metrics["change_5m_percent"], metrics["change_15m_percent"], metrics["change_1h_percent"], metrics["change_4h_percent"], metrics["change_24h_percent"],
+                    metrics["volume_spike_15m"], metrics["volume_spike_1h"], metrics["quote_volume_24h"],
+                    metrics["spread_percent"], metrics["bid_price"], metrics["ask_price"], metrics["orderbook_depth_usdt"], metrics["slippage_estimate_percent"],
+                    metrics["distance_from_24h_high_percent"], metrics["candle_close_strength"], metrics["upper_wick_percent"], metrics["lower_wick_percent"],
+                    metrics["relative_strength_vs_btc"], metrics["btc_context"], metrics["eth_context"], metrics["market_condition"],
+                    metrics["overextension_risk"], None, None, None, 0, 0, None,
+                    json.dumps(raw_payload, separators=(",", ":"), default=json_default), now, now,
+                ),
+            )
+            connection.commit()
+            return cursor.lastrowid
+        finally:
+            if cursor:
+                cursor.close()
+            connection.close()
+
+    def _update_scan_result_with_metrics(self, scan_result_id: int, metric_id: int, metrics: dict, raw_payload: dict, now: str) -> int:
+        return execute(
+            """
+            UPDATE scan_results
+            SET scanner_metric_id = %s, status = 'metrics_calculated', stage = 'metrics',
+                change_5m_percent = %s, change_15m_percent = %s, change_1h_percent = %s, change_4h_percent = %s,
+                volume_spike_15m = %s, volume_spike_1h = %s, spread_percent = %s,
+                orderbook_depth_usdt = %s, slippage_estimate_percent = %s,
+                distance_from_24h_high_percent = %s, candle_close_strength = %s,
+                upper_wick_percent = %s, lower_wick_percent = %s, relative_strength_vs_btc = %s,
+                overextension_risk = %s, risk_penalty = NULL, final_score = NULL, score_label = NULL,
+                raw_payload = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (
+                metric_id, metrics["change_5m_percent"], metrics["change_15m_percent"], metrics["change_1h_percent"], metrics["change_4h_percent"],
+                metrics["volume_spike_15m"], metrics["volume_spike_1h"], metrics["spread_percent"],
+                metrics["orderbook_depth_usdt"], metrics["slippage_estimate_percent"], metrics["distance_from_24h_high_percent"],
+                metrics["candle_close_strength"], metrics["upper_wick_percent"], metrics["lower_wick_percent"], metrics["relative_strength_vs_btc"],
+                metrics["overextension_risk"], json.dumps({"metrics": raw_payload}, separators=(",", ":"), default=json_default), now, scan_result_id,
+            ),
+        )
+
+    def _mark_scan_result_failed(self, scan_result_id: int, reason: str):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            """
+            UPDATE scan_results
+            SET status = 'failed', stage = 'metrics', rejection_reason = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (reason, now, scan_result_id),
+        )
+
+    def _update_scan_run_metrics_summary(self, scan_run_id: int, summary: dict):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            """
+            UPDATE scan_runs
+            SET metrics_calculated_count = %s, raw_payload = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (summary.get("scan_results_updated", 0), json.dumps({"metrics": summary}, separators=(",", ":"), default=json_default), now, scan_run_id),
+        )
 
     def _first_available(self, *values):
         for value in values:
@@ -341,11 +583,14 @@ class MetricsEngine:
     def _context_text(self, asset: str, market_snapshot: dict | None):
         if not market_snapshot:
             return None
-        change = safe_float(market_snapshot.get(f"{asset.lower()}_change_24h_percent"))
+        change_1h = safe_float(market_snapshot.get(f"{asset.lower()}_change_1h_percent"))
+        change_24h = safe_float(market_snapshot.get(f"{asset.lower()}_change_24h_percent"))
         condition = market_snapshot.get("market_condition") or "unknown"
-        if change is None:
-            return f"{asset} 24h unavailable, condition {condition}"
-        return f"{asset} 24h {change:+.2f}%, condition {condition}"
+        one_hour = "unavailable" if change_1h is None else f"{change_1h:+.2f}%"
+        twenty_four_hour = "unavailable" if change_24h is None else f"{change_24h:+.2f}%"
+        if asset.upper() == "BTC":
+            return f"BTC 1h {one_hour}, 24h {twenty_four_hour}, condition {condition}"
+        return f"{asset} 1h {one_hour}, 24h {twenty_four_hour}"
 
     def _compact_candle(self, candle: dict | None):
         if not candle:

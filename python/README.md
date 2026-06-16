@@ -280,3 +280,17 @@ The scan runner also updates `scan_runs.candles_fetched_count` to the number of 
 This scan-based candle step still does not calculate scan metrics, calculate `final_score`, score candidates, create `candidate_watchlists`, create `trade_plans`, create `simulated_trades`, place trades, use private CoinDCX APIs, or require API keys.
 
 The older `scripts/run_candle_collection_once.py` script remains available only for manual debugging or backfill. Do not run it continuously for all coins, and do not use it as an all-market scanner in the MVP workflow.
+
+## Manual scan with scan-based metrics
+
+Run a scheduled/manual MVP scan with prefiltering, scan-based candle collection, and scan-based metrics:
+
+```bash
+python scripts/run_manual_scan_once.py --name "Scan Metrics Test" --quote USDT --limit 50
+```
+
+The scan runner now calculates metrics only for `scan_results` rows in the current `scan_run` that passed the prefilter and successfully reached `status = candles_fetched`. It does not calculate metrics for all active coins during the MVP scan workflow.
+
+For each eligible scan result, the metrics engine reads existing `candles` rows, merges the latest BTC/ETH market context from `market_snapshots`, optionally merges the latest existing orderbook/liquidity values from `scanner_metrics`, inserts a fresh `scanner_metrics` row with `raw_payload.source = scan_based_metrics`, and links it back through `scan_results.scanner_metric_id`.
+
+This scan-based metrics step still does not calculate `final_score`, does not create watchlist candidates, does not create trade plans, does not create simulated trades, does not place trades, and does not use private CoinDCX APIs or API keys.
