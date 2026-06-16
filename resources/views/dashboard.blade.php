@@ -8,10 +8,17 @@
 
     <section class="grid" aria-label="Future modules">
         @foreach ($modules as $module)
-            <article class="card">
-                <h2>{{ $module }}</h2>
-                <div class="status">Coming Soon</div>
-            </article>
+            @if ($module === 'Settings')
+                <a class="card card-link" href="{{ route('cryptospot.settings.index') }}">
+                    <h2>{{ $module }}</h2>
+                    <div class="status">Open</div>
+                </a>
+            @else
+                <article class="card">
+                    <h2>{{ $module }}</h2>
+                    <div class="status">Coming Soon</div>
+                </article>
+            @endif
         @endforeach
     </section>
 @endsection
