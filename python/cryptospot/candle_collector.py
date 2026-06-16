@@ -266,6 +266,7 @@ class CandleCollector:
 
             if not scan_results:
                 message = f"scan_run_id={scan_run_id}, no prefilter-passed scan_results found"
+                summary["skipped_reason"] = "no prefilter-passed scan_results"
                 self._update_scan_run_candle_summary(scan_run_id, summary, 0)
                 write_health_log("scan_candle_collector", "ok", message, summary)
                 return summary
@@ -286,8 +287,8 @@ class CandleCollector:
                     summary["skipped"] += 1
                     error = f"{result.get('coindcx_symbol')} scan_result_id={scan_result_id}: missing api_pair"
                     summary["errors"].append(error)
-                    self._safe_update_scan_result(scan_result_id, "failed", "missing_api_pair", {"error": error})
-                    summary["scan_results_updated"] += 1
+                    if self._safe_update_scan_result(scan_result_id, "failed", "missing_api_pair", {"error": error}):
+                        summary["scan_results_updated"] += 1
                     continue
 
                 result_received = 0
@@ -321,26 +322,26 @@ class CandleCollector:
 
                 if result_upserted > 0:
                     successful_results += 1
-                    self._safe_update_scan_result(scan_result_id, "candles_fetched", None, {
+                    if self._safe_update_scan_result(scan_result_id, "candles_fetched", None, {
                         "api_pair": api_pair,
                         "timeframes": selected_timeframes,
                         "candles_received": result_received,
                         "candles_inserted_or_updated": result_upserted,
                         "errors": result_errors,
-                    })
-                    summary["scan_results_updated"] += 1
+                    }):
+                        summary["scan_results_updated"] += 1
                 else:
                     error = f"{result.get('coindcx_symbol')} scan_result_id={scan_result_id}: no candles inserted or updated"
                     if not result_errors:
                         summary["errors"].append(error)
-                    self._safe_update_scan_result(scan_result_id, "failed", "candle_fetch_failed", {
+                    if self._safe_update_scan_result(scan_result_id, "failed", "candle_fetch_failed", {
                         "api_pair": api_pair,
                         "timeframes": selected_timeframes,
                         "candles_received": result_received,
                         "candles_inserted_or_updated": result_upserted,
                         "errors": result_errors or [error],
-                    })
-                    summary["scan_results_updated"] += 1
+                    }):
+                        summary["scan_results_updated"] += 1
 
                 summary["symbols_processed"] += 1
 
@@ -404,10 +405,10 @@ class CandleCollector:
             (scan_run_id,),
         )
 
-    def _safe_update_scan_result(self, scan_result_id: int, status: str, rejection_reason: str | None, candle_summary: dict):
+    def _safe_update_scan_result(self, scan_result_id: int, status: str, rejection_reason: str | None, candle_summary: dict) -> bool:
         try:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            raw_payload = json.dumps({"candle_collection": candle_summary}, separators=(",", ":"), default=str)
+            raw_payload = self._merged_scan_result_payload(scan_result_id, candle_summary)
             if rejection_reason:
                 execute(
                     """
@@ -428,8 +429,17 @@ class CandleCollector:
                     """,
                     (status, raw_payload, now, scan_result_id),
                 )
+            return True
         except Exception as exc:
             logger.warning("Failed to update scan_result %s after candle collection: %s", scan_result_id, exc)
+            return False
+
+    def _merged_scan_result_payload(self, scan_result_id: int, candle_summary: dict) -> str:
+        row = fetch_one("SELECT raw_payload FROM scan_results WHERE id = %s LIMIT 1", (scan_result_id,))
+        raw_payload = row.get("raw_payload") if row else None
+        payload = self._raw_payload_dict(raw_payload)
+        payload["candle_collection"] = candle_summary
+        return json.dumps(payload, separators=(",", ":"), default=str)
 
     def _update_scan_run_candle_summary(self, scan_run_id: int, summary: dict, candles_fetched_count: int):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
