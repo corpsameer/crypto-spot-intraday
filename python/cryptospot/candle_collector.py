@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Any
@@ -25,6 +26,7 @@ LOOKBACK_WINDOWS = {
     "4h": timedelta(days=14),
 }
 API_SLEEP_SECONDS = 0.15
+PAIR_LIKE_PATTERN = re.compile(r"^[A-Z0-9]+-[A-Z0-9]+_[A-Z0-9]+$")
 
 logger = get_logger(__name__)
 
@@ -176,18 +178,18 @@ class CandleCollector:
                 return summary
 
             for symbol in active_symbols:
-                processed_any_timeframe = False
                 for timeframe in selected_timeframes:
                     try:
                         api_interval = INTERVAL_MAP.get(timeframe, timeframe)
                         start_time, end_time = self._time_window_ms(timeframe)
+                        candle_pair = self._candle_pair(symbol)
+                        summary["api_calls"] += 1
                         response = self.client.candles(
-                            symbol["coindcx_symbol"],
+                            candle_pair,
                             api_interval,
                             start_time=start_time,
                             end_time=end_time,
                         )
-                        summary["api_calls"] += 1
                         candle_rows = self._coerce_candle_rows(response)
                         summary["candles_received"] += len(candle_rows)
 
@@ -196,7 +198,6 @@ class CandleCollector:
                         if params:
                             self._upsert_candles(params)
                             summary["candles_inserted_or_updated"] += len(params)
-                        processed_any_timeframe = True
                     except Exception as exc:
                         error = f"{symbol.get('coindcx_symbol')} {timeframe}: {exc}"
                         logger.warning(error)
@@ -204,8 +205,7 @@ class CandleCollector:
                     finally:
                         time.sleep(API_SLEEP_SECONDS)
 
-                if processed_any_timeframe:
-                    summary["symbols_processed"] += 1
+                summary["symbols_processed"] += 1
 
             status = "warning" if summary["errors"] else "ok"
             message = (
@@ -231,12 +231,55 @@ class CandleCollector:
     def _load_active_symbols(self) -> list[dict]:
         return fetch_all(
             """
-            SELECT id, coindcx_symbol, base_asset, quote_asset
+            SELECT id, coindcx_symbol, base_asset, quote_asset, raw_payload
             FROM spot_symbols
             WHERE is_active = 1
             ORDER BY coindcx_symbol ASC
             """
         )
+
+    def _candle_pair(self, symbol: dict) -> str:
+        raw_payload = self._raw_payload_dict(symbol.get("raw_payload"))
+
+        for key in ("pair", "pair_name", "market", "symbol"):
+            value = self._clean_pair(raw_payload.get(key))
+            if value and PAIR_LIKE_PATTERN.match(value):
+                return value
+
+        base_asset = self._clean_asset(symbol.get("base_asset"))
+        quote_asset = self._clean_asset(symbol.get("quote_asset"))
+        exchange_code = self._clean_asset(
+            raw_payload.get("ecode")
+            or raw_payload.get("exchange_code")
+            or raw_payload.get("exchange")
+            or "B"
+        )
+
+        if base_asset and quote_asset:
+            return f"{exchange_code}-{base_asset}_{quote_asset}"
+
+        return str(symbol.get("coindcx_symbol") or "").strip().upper()
+
+    def _raw_payload_dict(self, raw_payload) -> dict:
+        if isinstance(raw_payload, dict):
+            return raw_payload
+        if isinstance(raw_payload, str) and raw_payload.strip():
+            try:
+                parsed = json.loads(raw_payload)
+                return parsed if isinstance(parsed, dict) else {}
+            except ValueError:
+                return {}
+        return {}
+
+    def _clean_pair(self, value) -> str | None:
+        if value is None or value == "":
+            return None
+        return str(value).strip().upper()
+
+    def _clean_asset(self, value) -> str | None:
+        if value is None or value == "":
+            return None
+        return re.sub(r"[^A-Z0-9]", "", str(value).strip().upper())
 
     def _normalize_timeframes(self, timeframes: list = None) -> list[str]:
         if not timeframes:
