@@ -5,6 +5,7 @@ from datetime import datetime
 from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
+from cryptospot.prefilter_engine import PrefilterEngine
 from cryptospot.settings import get_settings_by_group
 
 SERVICE_NAME = "scan_runner"
@@ -87,6 +88,13 @@ class ScanRunner:
             "ticker_rows_fetched": 0,
             "matched_symbols": 0,
             "scan_results_created": 0,
+            "prefilter": {
+                "total_discovered": 0,
+                "passed": 0,
+                "rejected": 0,
+                "max_prefilter_symbols": 50,
+                "errors": [],
+            },
             "duration_seconds": 0,
             "skipped": 0,
             "errors": [],
@@ -154,6 +162,17 @@ class ScanRunner:
                     summary["scan_results_created"] += 1
                 except Exception as exc:
                     summary["errors"].append(f"Failed to insert scan_result for {spot_symbol.get('coindcx_symbol')}: {exc}")
+
+            prefilter_summary = PrefilterEngine().apply_to_scan_run(summary["scan_run_id"])
+            summary["prefilter"] = {
+                "total_discovered": prefilter_summary.get("total_discovered", 0),
+                "passed": prefilter_summary.get("passed", 0),
+                "rejected": prefilter_summary.get("rejected", 0),
+                "max_prefilter_symbols": prefilter_summary.get("max_prefilter_symbols", 50),
+                "errors": prefilter_summary.get("errors", []),
+            }
+            if prefilter_summary.get("errors"):
+                summary["errors"].extend([f"Prefilter: {error}" for error in prefilter_summary.get("errors", [])])
 
             summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
             self._mark_scan_completed(summary)
@@ -277,12 +296,16 @@ class ScanRunner:
             UPDATE scan_runs
             SET status = 'completed', completed_at = %s, duration_seconds = %s,
                 total_active_symbols = %s, ticker_rows_fetched = %s,
-                prefilter_passed_count = 0, candles_fetched_count = 0, metrics_calculated_count = 0,
+                prefilter_passed_count = %s, candles_fetched_count = 0, metrics_calculated_count = 0,
                 scored_count = 0, watchlist_created_count = 0, trade_plans_created_count = 0,
                 raw_payload = %s, updated_at = %s
             WHERE id = %s
             """,
-            (now, summary["duration_seconds"], summary["active_symbols"], summary["ticker_rows_fetched"], json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"]),
+            (
+                now, summary["duration_seconds"], summary["active_symbols"], summary["ticker_rows_fetched"],
+                summary.get("prefilter", {}).get("passed", 0),
+                json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"],
+            ),
         )
 
     def _mark_scan_failed(self, summary, error_message):

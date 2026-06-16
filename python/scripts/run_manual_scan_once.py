@@ -25,7 +25,7 @@ def main() -> int:
     for key in (
         "scan_run_id", "run_uuid", "scan_type", "scan_name", "status", "quote_filter",
         "active_symbols", "ticker_rows_fetched", "matched_symbols", "scan_results_created",
-        "duration_seconds", "skipped", "errors",
+        "prefilter", "duration_seconds", "skipped", "errors",
     ):
         print(f"{key}: {json.dumps(summary.get(key), default=str)}")
 
