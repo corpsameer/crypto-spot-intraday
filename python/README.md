@@ -88,6 +88,12 @@ Run selected timeframes only:
 python scripts/run_candle_collection_once.py --limit 5 --timeframes 5m,15m,1h
 ```
 
+Run only BTC and ETH candles for market context:
+
+```bash
+python scripts/run_candle_collection_once.py --base-assets BTC,ETH --timeframes 1m,5m,15m,1h
+```
+
 This one-shot collector fetches recent CoinDCX public candle data for active spot symbols and stores it in the `candles` table. It writes a `candle_collector` health log entry and uses public market data only.
 
 This is not the continuous monitor yet. It does not calculate metrics, score symbols, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
@@ -194,7 +200,7 @@ python scripts/run_market_context_once.py
 Recommended before running market context, collect recent BTC/ETH candles for the required timeframes:
 
 ```bash
-python scripts/run_candle_collection_once.py --timeframes 1m,5m,15m,1h --limit 50
+python scripts/run_candle_collection_once.py --base-assets BTC,ETH --timeframes 1m,5m,15m,1h
 ```
 
 This one-shot market context engine resolves active BTC and ETH spot symbols from `spot_symbols`, preferring USDT pairs and falling back to INR pairs. It calculates BTC/ETH 5m, 15m, 1h, 4h, and 24h context from existing `candles` table data, classifies the broad market as `bullish`, `neutral`, `bearish`, `volatile`, or `unknown`, and inserts a fresh row into `market_snapshots`.
