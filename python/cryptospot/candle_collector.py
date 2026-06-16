@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from cryptospot.coindcx_client import CoinDCXPublicClient
-from cryptospot.db import execute_many, fetch_all
+from cryptospot.db import execute, execute_many, fetch_all, fetch_one
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 
@@ -233,6 +233,135 @@ class CandleCollector:
                 pass
             raise
 
+
+    def run_for_scan_run(self, scan_run_id: int, timeframes: list = None, limit: int = None) -> dict:
+        summary = {
+            "scan_run_id": scan_run_id,
+            "prefilter_passed_results": 0,
+            "symbols_processed": 0,
+            "timeframes": [],
+            "api_calls": 0,
+            "candles_received": 0,
+            "candles_inserted_or_updated": 0,
+            "scan_results_updated": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+        try:
+            selected_timeframes = self._normalize_timeframes(timeframes)
+            summary["timeframes"] = selected_timeframes
+
+            scan_run = fetch_one("SELECT id FROM scan_runs WHERE id = %s LIMIT 1", (scan_run_id,))
+            if not scan_run:
+                message = f"scan_run_id={scan_run_id} does not exist"
+                summary["errors"].append(message)
+                write_health_log("scan_candle_collector", "error", message, summary)
+                return summary
+
+            scan_results = self._load_prefilter_passed_scan_results(scan_run_id)
+            summary["prefilter_passed_results"] = len(scan_results)
+            if limit is not None:
+                scan_results = scan_results[: max(int(limit), 0)]
+
+            if not scan_results:
+                message = f"scan_run_id={scan_run_id}, no prefilter-passed scan_results found"
+                self._update_scan_run_candle_summary(scan_run_id, summary, 0)
+                write_health_log("scan_candle_collector", "ok", message, summary)
+                return summary
+
+            successful_results = 0
+            for result in scan_results:
+                scan_result_id = result.get("scan_result_id")
+                api_pair = str(result.get("api_pair") or result.get("spot_symbol_api_pair") or "").strip()
+                symbol = {
+                    "id": result.get("spot_symbol_id"),
+                    "coindcx_symbol": result.get("coindcx_symbol"),
+                    "api_pair": api_pair,
+                    "base_asset": result.get("base_asset"),
+                    "quote_asset": result.get("quote_asset"),
+                }
+
+                if not api_pair:
+                    summary["skipped"] += 1
+                    error = f"{result.get('coindcx_symbol')} scan_result_id={scan_result_id}: missing api_pair"
+                    summary["errors"].append(error)
+                    self._safe_update_scan_result(scan_result_id, "failed", "missing_api_pair", {"error": error})
+                    summary["scan_results_updated"] += 1
+                    continue
+
+                result_received = 0
+                result_upserted = 0
+                result_errors = []
+
+                for timeframe in selected_timeframes:
+                    try:
+                        api_interval = INTERVAL_MAP.get(timeframe, timeframe)
+                        start_time, end_time = self._time_window_ms(timeframe)
+                        summary["api_calls"] += 1
+                        response = self.client.candles(api_pair, api_interval, start_time=start_time, end_time=end_time)
+                        candle_rows = self._coerce_candle_rows(response)
+                        summary["candles_received"] += len(candle_rows)
+                        result_received += len(candle_rows)
+
+                        params = self._build_upsert_params(symbol, timeframe, candle_rows)
+                        skipped_rows = len(candle_rows) - len(params)
+                        summary["skipped"] += skipped_rows
+                        if params:
+                            self._upsert_candles(params)
+                            summary["candles_inserted_or_updated"] += len(params)
+                            result_upserted += len(params)
+                    except Exception as exc:
+                        error = f"{result.get('coindcx_symbol')} {timeframe}: {exc}"
+                        logger.warning(error)
+                        summary["errors"].append(error)
+                        result_errors.append(error)
+                    finally:
+                        time.sleep(API_SLEEP_SECONDS)
+
+                if result_upserted > 0:
+                    successful_results += 1
+                    self._safe_update_scan_result(scan_result_id, "candles_fetched", None, {
+                        "api_pair": api_pair,
+                        "timeframes": selected_timeframes,
+                        "candles_received": result_received,
+                        "candles_inserted_or_updated": result_upserted,
+                        "errors": result_errors,
+                    })
+                    summary["scan_results_updated"] += 1
+                else:
+                    error = f"{result.get('coindcx_symbol')} scan_result_id={scan_result_id}: no candles inserted or updated"
+                    if not result_errors:
+                        summary["errors"].append(error)
+                    self._safe_update_scan_result(scan_result_id, "failed", "candle_fetch_failed", {
+                        "api_pair": api_pair,
+                        "timeframes": selected_timeframes,
+                        "candles_received": result_received,
+                        "candles_inserted_or_updated": result_upserted,
+                        "errors": result_errors or [error],
+                    })
+                    summary["scan_results_updated"] += 1
+
+                summary["symbols_processed"] += 1
+
+            self._update_scan_run_candle_summary(scan_run_id, summary, successful_results)
+            status = "warning" if summary["errors"] or summary["skipped"] else "ok"
+            message = (
+                f"scan_run_id={scan_run_id}, symbols_processed={summary['symbols_processed']}, "
+                f"candles_inserted_or_updated={summary['candles_inserted_or_updated']}"
+            )
+            if status == "warning":
+                message = f"{message}, errors={len(summary['errors'])}, skipped={summary['skipped']}"
+            write_health_log("scan_candle_collector", status, message, summary)
+            return summary
+        except Exception as exc:
+            summary["errors"].append(str(exc))
+            try:
+                write_health_log("scan_candle_collector", "error", str(exc), summary)
+            except Exception:
+                pass
+            return summary
+
     def _load_active_symbols(self, base_assets: list = None) -> list[dict]:
         normalized_base_assets = self._normalize_base_assets(base_assets)
         params = []
@@ -251,6 +380,66 @@ class CandleCollector:
             ORDER BY base_asset ASC, quote_asset DESC, coindcx_symbol ASC
             """,
             tuple(params),
+        )
+
+
+    def _load_prefilter_passed_scan_results(self, scan_run_id: int) -> list[dict]:
+        return fetch_all(
+            """
+            SELECT
+                sr.id AS scan_result_id,
+                sr.scan_run_id,
+                sr.spot_symbol_id,
+                sr.coindcx_symbol,
+                sr.api_pair,
+                sr.base_asset,
+                sr.quote_asset,
+                ss.api_pair AS spot_symbol_api_pair
+            FROM scan_results sr
+            LEFT JOIN spot_symbols ss ON ss.id = sr.spot_symbol_id
+            WHERE sr.scan_run_id = %s
+            AND sr.prefilter_passed = 1
+            ORDER BY sr.quote_volume_24h DESC, sr.change_24h_percent DESC, sr.id ASC
+            """,
+            (scan_run_id,),
+        )
+
+    def _safe_update_scan_result(self, scan_result_id: int, status: str, rejection_reason: str | None, candle_summary: dict):
+        try:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            raw_payload = json.dumps({"candle_collection": candle_summary}, separators=(",", ":"), default=str)
+            if rejection_reason:
+                execute(
+                    """
+                    UPDATE scan_results
+                    SET status = %s, stage = 'candles', rejection_reason = %s,
+                        raw_payload = %s, updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (status, rejection_reason, raw_payload, now, scan_result_id),
+                )
+            else:
+                execute(
+                    """
+                    UPDATE scan_results
+                    SET status = %s, stage = 'candles', rejection_reason = NULL,
+                        raw_payload = %s, updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (status, raw_payload, now, scan_result_id),
+                )
+        except Exception as exc:
+            logger.warning("Failed to update scan_result %s after candle collection: %s", scan_result_id, exc)
+
+    def _update_scan_run_candle_summary(self, scan_run_id: int, summary: dict, candles_fetched_count: int):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            """
+            UPDATE scan_runs
+            SET candles_fetched_count = %s, raw_payload = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (candles_fetched_count, json.dumps({"candle_collection": summary}, separators=(",", ":"), default=str), now, scan_run_id),
         )
 
     def _normalize_base_assets(self, base_assets: list = None) -> list[str]:
