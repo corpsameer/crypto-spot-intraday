@@ -122,3 +122,31 @@ http://127.0.0.1:8000/cryptospot/spot-symbols
 ```
 
 The sync only stores spot symbol metadata and writes a system health log entry for each attempt. It does not poll prices, candles, candidates, scores, simulated trades, or real trades.
+
+## CoinDCX market-data pair compatibility
+
+CoinDCX symbols are stored with two identifiers:
+
+- `coindcx_symbol`: the normalized scanner/display symbol used for matching, joins, and scanner logic, for example `BTCUSDT`.
+- `api_pair`: the raw CoinDCX market-data pair from Markets Details, for example `B-BTC_USDT`.
+
+CoinDCX orderbook and candle public market-data endpoints must use `spot_symbols.api_pair` rather than the normalized `coindcx_symbol`. Re-run the migration and universe sync to add/backfill this value:
+
+```bash
+php artisan migrate
+php artisan cryptospot:sync-universe
+```
+
+Python compatibility checks and collectors:
+
+```bash
+cd python
+python scripts/test_market_pair_resolution.py
+python scripts/run_candle_collection_once.py --limit 3 --timeframes 1m
+```
+
+The next orderbook/liquidity task is expected to add this command, which should also use `api_pair`:
+
+```bash
+python scripts/run_orderbook_collection_once.py --quote USDT --limit 3 --target-notional 100
+```

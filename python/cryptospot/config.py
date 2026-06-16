@@ -12,6 +12,11 @@ DB_DATABASE = os.getenv("DB_DATABASE", "crypto_spot_intraday")
 DB_USERNAME = os.getenv("DB_USERNAME", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
-COINDCX_PUBLIC_BASE_URL = os.getenv("COINDCX_PUBLIC_BASE_URL", "https://api.coindcx.com")
-COINDCX_CANDLE_BASE_URL = os.getenv("COINDCX_CANDLE_BASE_URL", "https://public.coindcx.com")
+COINDCX_PUBLIC_BASE_URL = os.getenv("COINDCX_PUBLIC_BASE_URL")
+COINDCX_API_BASE_URL = os.getenv(
+    "COINDCX_API_BASE_URL",
+    COINDCX_PUBLIC_BASE_URL or "https://api.coindcx.com",
+)
+COINDCX_MARKET_DATA_BASE_URL = os.getenv("COINDCX_MARKET_DATA_BASE_URL", "https://public.coindcx.com")
+COINDCX_CANDLE_BASE_URL = os.getenv("COINDCX_CANDLE_BASE_URL", COINDCX_MARKET_DATA_BASE_URL)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

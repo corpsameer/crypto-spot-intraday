@@ -98,3 +98,32 @@ This is not the continuous monitor yet. It does not calculate metrics, score sym
 - No CoinDCX API keys are used or expected.
 - No private/authenticated CoinDCX endpoints are implemented.
 - No buy/sell logic, real trading execution, continuous monitor, scoring, candidate creation, or trade simulation logic is implemented in this foundation.
+
+## CoinDCX API pair handling
+
+The Python collectors use two CoinDCX identifiers from `spot_symbols`:
+
+- `coindcx_symbol`: normalized scanner/display symbol, for example `BTCUSDT`. Ticker matching continues to use this value.
+- `api_pair`: raw CoinDCX market-data pair, for example `B-BTC_USDT`. Candle and orderbook market-data requests must use this value.
+
+Configure the public endpoints with:
+
+```env
+COINDCX_API_BASE_URL=https://api.coindcx.com
+COINDCX_MARKET_DATA_BASE_URL=https://public.coindcx.com
+```
+
+`COINDCX_PUBLIC_BASE_URL` remains a backward-compatible fallback for the API base URL only.
+
+After migrating and syncing the Laravel app, validate market pair resolution from the Python directory:
+
+```bash
+python scripts/test_market_pair_resolution.py
+python scripts/run_candle_collection_once.py --limit 3 --timeframes 1m
+```
+
+The next orderbook/liquidity task is expected to add an orderbook collector command that also uses `api_pair`:
+
+```bash
+python scripts/run_orderbook_collection_once.py --quote USDT --limit 3 --target-notional 100
+```

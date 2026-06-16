@@ -2,15 +2,17 @@ import time
 
 import requests
 
-from cryptospot.config import COINDCX_CANDLE_BASE_URL, COINDCX_PUBLIC_BASE_URL
+from cryptospot.config import COINDCX_API_BASE_URL, COINDCX_MARKET_DATA_BASE_URL
 
 
 class CoinDCXPublicClient:
-    def __init__(self, base_url: str = None):
-        self.base_url = (base_url or COINDCX_PUBLIC_BASE_URL).rstrip("/")
+    def __init__(self, api_base_url: str = None, market_data_base_url: str = None, base_url: str = None):
+        # base_url is kept as a backward-compatible alias for the API base.
+        self.api_base_url = (api_base_url or base_url or COINDCX_API_BASE_URL).rstrip("/")
+        self.market_data_base_url = (market_data_base_url or COINDCX_MARKET_DATA_BASE_URL).rstrip("/")
 
     def _get(self, path: str, params: dict = None, base_url: str = None):
-        request_base_url = (base_url or self.base_url).rstrip("/")
+        request_base_url = (base_url or self.api_base_url).rstrip("/")
         url = f"{request_base_url}/{path.lstrip('/')}"
         last_error = None
 
@@ -38,7 +40,7 @@ class CoinDCXPublicClient:
         return self._get("/exchange/ticker")
 
     def orderbook(self, pair: str) -> dict:
-        return self._get("/market_data/orderbook", {"pair": pair})
+        return self._get("/market_data/orderbook", {"pair": pair}, base_url=self.market_data_base_url)
 
     def candles(self, pair: str, interval: str, start_time: int = None, end_time: int = None) -> list:
         params = {"pair": pair, "interval": interval}
@@ -46,4 +48,4 @@ class CoinDCXPublicClient:
             params["startTime"] = start_time
         if end_time is not None:
             params["endTime"] = end_time
-        return self._get("/market_data/candles/", params, base_url=COINDCX_CANDLE_BASE_URL)
+        return self._get("/market_data/candles", params, base_url=self.market_data_base_url)
