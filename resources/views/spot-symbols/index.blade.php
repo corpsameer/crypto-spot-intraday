@@ -41,7 +41,8 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>Symbol</th>
+                    <th>CoinDCX Symbol</th>
+                    <th>API Pair</th>
                     <th>Base</th>
                     <th>Quote</th>
                     <th>Status</th>
@@ -53,6 +54,7 @@
                 @forelse ($symbols as $symbol)
                     <tr>
                         <td><strong>{{ $symbol->coindcx_symbol }}</strong></td>
+                        <td>{{ $symbol->api_pair ?? '—' }}</td>
                         <td>{{ $symbol->base_asset ?? '—' }}</td>
                         <td>{{ $symbol->quote_asset ?? '—' }}</td>
                         <td><span class="badge {{ $symbol->is_active ? 'badge-active' : 'badge-inactive' }}">{{ $symbol->status }}</span></td>
@@ -61,7 +63,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6">No symbols synced yet.</td>
+                        <td colspan="7">No symbols synced yet.</td>
                     </tr>
                 @endforelse
             </tbody>

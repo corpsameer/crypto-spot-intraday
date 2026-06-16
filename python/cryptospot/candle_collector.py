@@ -183,6 +183,10 @@ class CandleCollector:
                         api_interval = INTERVAL_MAP.get(timeframe, timeframe)
                         start_time, end_time = self._time_window_ms(timeframe)
                         candle_pair = self._candle_pair(symbol)
+                        if not symbol.get("api_pair"):
+                            warning = f"{symbol.get('coindcx_symbol')} {timeframe}: missing api_pair, falling back to coindcx_symbol"
+                            logger.warning(warning)
+                            summary["errors"].append(warning)
                         summary["api_calls"] += 1
                         response = self.client.candles(
                             candle_pair,
@@ -231,7 +235,7 @@ class CandleCollector:
     def _load_active_symbols(self) -> list[dict]:
         return fetch_all(
             """
-            SELECT id, coindcx_symbol, base_asset, quote_asset, raw_payload
+            SELECT id, coindcx_symbol, api_pair, base_asset, quote_asset
             FROM spot_symbols
             WHERE is_active = 1
             ORDER BY coindcx_symbol ASC
@@ -239,6 +243,13 @@ class CandleCollector:
         )
 
     def _candle_pair(self, symbol: dict) -> str:
+        api_pair = str(symbol.get("api_pair") or "").strip()
+        if api_pair:
+            return api_pair
+
+        return str(symbol.get("coindcx_symbol") or "").strip().upper()
+
+    def _legacy_candle_pair(self, symbol: dict) -> str:
         raw_payload = self._raw_payload_dict(symbol.get("raw_payload"))
 
         for key in ("pair", "pair_name", "market", "symbol"):
@@ -329,7 +340,7 @@ class CandleCollector:
                     candle["volume"],
                     candle["quote_volume"],
                     candle["trade_count"],
-                    json.dumps(candle["raw"], separators=(",", ":"), default=str),
+                    json.dumps({"api_pair": symbol.get("api_pair"), "candle": candle["raw"]}, separators=(",", ":"), default=str),
                     now,
                     now,
                 )

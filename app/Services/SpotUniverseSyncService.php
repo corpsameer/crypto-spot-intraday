@@ -38,10 +38,12 @@ class SpotUniverseSyncService
                 }
 
                 $activeSymbols[] = $symbol;
+                $apiPair = $this->apiPair($market);
 
                 SpotSymbol::updateOrCreate(
                     ['coindcx_symbol' => $symbol],
                     [
+                        'api_pair' => $apiPair,
                         'base_asset' => $this->stringValue($market, ['target_currency_short_name', 'target_currency']),
                         'quote_asset' => $this->stringValue($market, ['base_currency_short_name', 'base_currency']),
                         'display_name' => $this->displayName($market, $symbol),
@@ -92,7 +94,23 @@ class SpotUniverseSyncService
     {
         $symbol = $this->stringValue($market, ['coindcx_name', 'symbol', 'pair']);
 
-        return $symbol !== null ? strtoupper($symbol) : null;
+        return $symbol !== null ? $this->normalizeSymbol($symbol) : null;
+    }
+
+    private function apiPair(array $market): ?string
+    {
+        return $this->stringValue($market, ['pair', 'coindcx_name', 'symbol', 'market']);
+    }
+
+    private function normalizeSymbol(string $symbol): string
+    {
+        $value = strtoupper(trim($symbol));
+
+        if (str_contains($value, '-') && str_contains($value, '_')) {
+            $value = substr($value, (int) strrpos($value, '-') + 1);
+        }
+
+        return str_replace(['-', '_', '/'], '', $value);
     }
 
     private function displayName(array $market, string $symbol): string

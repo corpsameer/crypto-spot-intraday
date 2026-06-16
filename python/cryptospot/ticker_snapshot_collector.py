@@ -141,7 +141,7 @@ class TickerSnapshotCollector:
                         ticker["spread_percent"],
                         ticker["bid_price"],
                         ticker["ask_price"],
-                        json.dumps(ticker["raw"], separators=(",", ":"), default=str),
+                        json.dumps({"api_pair": spot_symbol.get("api_pair"), "ticker": ticker["raw"]}, separators=(",", ":"), default=str),
                         0,
                         0,
                         now,
@@ -178,7 +178,7 @@ class TickerSnapshotCollector:
     def _load_active_symbols(self) -> dict:
         rows = fetch_all(
             """
-            SELECT id, coindcx_symbol, base_asset, quote_asset
+            SELECT id, coindcx_symbol, api_pair, base_asset, quote_asset
             FROM spot_symbols
             WHERE is_active = 1
             """

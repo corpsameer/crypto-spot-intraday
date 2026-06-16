@@ -14,6 +14,7 @@ class SpotSymbol extends Model
 
     protected $fillable = [
         'coindcx_symbol',
+        'api_pair',
         'base_asset',
         'quote_asset',
         'display_name',
