@@ -27,12 +27,20 @@
                                 <p class="setting-description">{{ $setting->description }}</p>
                             @endif
                         </div>
-                        <input
-                            type="text"
-                            name="settings[{{ $setting->key }}]"
-                            value="{{ old('settings.' . $setting->key, $setting->value) }}"
-                            @readonly(! $setting->is_editable)
-                        >
+                        @if ($setting->value_type === 'json')
+                            <textarea
+                                name="settings[{{ $setting->key }}]"
+                                rows="3"
+                                @readonly(! $setting->is_editable)
+                            >{{ old('settings.' . $setting->key, $setting->value) }}</textarea>
+                        @else
+                            <input
+                                type="text"
+                                name="settings[{{ $setting->key }}]"
+                                value="{{ old('settings.' . $setting->key, $setting->value) }}"
+                                @readonly(! $setting->is_editable)
+                            >
+                        @endif
                     </div>
                 @empty
                     <p class="subtitle">No settings in this group yet.</p>
