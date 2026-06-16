@@ -6,6 +6,7 @@ from cryptospot.candle_collector import CandleCollector
 from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
+from cryptospot.metrics_engine import MetricsEngine
 from cryptospot.prefilter_engine import PrefilterEngine
 from cryptospot.settings import get_settings_by_group
 
@@ -111,6 +112,14 @@ class ScanRunner:
                 "enabled": False,
                 "skipped_reason": "not started",
             },
+            "metrics": {
+                "eligible_scan_results": 0,
+                "symbols_processed": 0,
+                "metrics_inserted": 0,
+                "scan_results_updated": 0,
+                "skipped": 0,
+                "errors": [],
+            },
             "duration_seconds": 0,
             "skipped": 0,
             "errors": [],
@@ -201,6 +210,18 @@ class ScanRunner:
                     "enabled": False,
                     "skipped_reason": "scan.fetch_candles_for_candidates disabled",
                 }
+
+            metrics_summary = MetricsEngine().run_for_scan_run(summary["scan_run_id"])
+            summary["metrics"] = {
+                "eligible_scan_results": metrics_summary.get("eligible_scan_results", 0),
+                "symbols_processed": metrics_summary.get("symbols_processed", 0),
+                "metrics_inserted": metrics_summary.get("metrics_inserted", 0),
+                "scan_results_updated": metrics_summary.get("scan_results_updated", 0),
+                "skipped": metrics_summary.get("skipped", 0),
+                "errors": metrics_summary.get("errors", []),
+            }
+            if metrics_summary.get("errors"):
+                summary["errors"].extend([f"Metrics: {error}" for error in metrics_summary.get("errors", [])])
 
             summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
             self._mark_scan_completed(summary)
@@ -324,7 +345,7 @@ class ScanRunner:
             UPDATE scan_runs
             SET status = 'completed', completed_at = %s, duration_seconds = %s,
                 total_active_symbols = %s, ticker_rows_fetched = %s,
-                prefilter_passed_count = %s, candles_fetched_count = %s, metrics_calculated_count = 0,
+                prefilter_passed_count = %s, candles_fetched_count = %s, metrics_calculated_count = %s,
                 scored_count = 0, watchlist_created_count = 0, trade_plans_created_count = 0,
                 raw_payload = %s, updated_at = %s
             WHERE id = %s
@@ -332,7 +353,8 @@ class ScanRunner:
             (
                 now, summary["duration_seconds"], summary["active_symbols"], summary["ticker_rows_fetched"],
                 summary.get("prefilter", {}).get("passed", 0),
-                self._count_candles_fetched_results(summary["scan_run_id"]),
+                self._count_candle_success_results(summary["scan_run_id"]),
+                summary.get("metrics", {}).get("scan_results_updated", 0),
                 json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"],
             ),
         )
@@ -343,6 +365,21 @@ class ScanRunner:
             SELECT COUNT(*) AS cnt
             FROM scan_results
             WHERE scan_run_id = %s AND status = 'candles_fetched' AND stage = 'candles'
+            """,
+            (scan_run_id,),
+        )
+        return int(row.get("cnt") or 0) if row else 0
+
+    def _count_candle_success_results(self, scan_run_id):
+        row = fetch_one(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM scan_results
+            WHERE scan_run_id = %s
+              AND (
+                  (status = 'candles_fetched' AND stage = 'candles')
+                  OR (status = 'metrics_calculated' AND stage = 'metrics')
+              )
             """,
             (scan_run_id,),
         )
