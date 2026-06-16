@@ -98,3 +98,27 @@ CREATE DATABASE crypto_spot_intraday CHARACTER SET utf8mb4 COLLATE utf8mb4_unico
 ```bash
 php artisan migrate --seed
 ```
+
+## CoinDCX Spot Universe Sync
+
+Task 3 adds a CoinDCX public market sync for the local `spot_symbols` table.
+
+Configure the public API base URL in `.env` if needed:
+
+```bash
+COINDCX_PUBLIC_BASE_URL=https://api.coindcx.com
+```
+
+Run the sync manually from the CLI:
+
+```bash
+php artisan cryptospot:sync-spot-universe
+```
+
+Or sign in and open:
+
+```text
+http://127.0.0.1:8000/cryptospot/spot-symbols
+```
+
+The sync only stores spot symbol metadata and writes a system health log entry for each attempt. It does not poll prices, candles, candidates, scores, simulated trades, or real trades.

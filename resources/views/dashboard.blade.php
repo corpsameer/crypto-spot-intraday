@@ -8,7 +8,12 @@
 
     <section class="grid" aria-label="Future modules">
         @foreach ($modules as $module)
-            @if ($module === 'Settings')
+            @if ($module === 'Universe Sync')
+                <a class="card card-link" href="{{ route('cryptospot.spot-symbols.index') }}">
+                    <h2>{{ $module }}</h2>
+                    <div class="status">Open</div>
+                </a>
+            @elseif ($module === 'Settings')
                 <a class="card card-link" href="{{ route('cryptospot.settings.index') }}">
                     <h2>{{ $module }}</h2>
                     <div class="status">Open</div>
