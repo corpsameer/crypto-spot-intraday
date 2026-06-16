@@ -235,23 +235,24 @@ Verify the Python settings reader from inside the `python` folder:
 python scripts/test_scan_settings.py
 ```
 
-## Run Manual Scan Skeleton
+## Run Manual Scan With Prefilter
 
 Run this command from inside the `python` folder after activating the virtual environment:
 
 ```bash
-python scripts/run_manual_scan_once.py --name "Manual Test Scan" --quote USDT --limit 20
+python scripts/run_manual_scan_once.py --name "Manual Prefilter Test" --quote USDT --limit 100
 ```
 
-This manual scan skeleton prepares the scheduled/manual scan workflow for later prefiltering and scoring tasks:
+The manual scan runner now performs the scheduled/manual MVP scan flow through the ticker-level prefilter stage:
 
 - It creates a `scan_runs` row with `scan_type = manual` and `status = running`, then marks it `completed` or `failed`.
 - It respects `scan.enabled`, `scan.allow_manual_scan`, `scan.prevent_overlap`, and `scan.default_quote_filter` settings from `app_settings`.
 - It prevents overlapping manual scans when `scan.prevent_overlap` is enabled and a `scan_runs.status = running` row already exists.
 - It loads active rows from `spot_symbols`, applies the quote filter and optional CLI limit, and matches tickers using normalized `coindcx_symbol` values.
 - It fetches CoinDCX ticker data once for the scan through the public `CoinDCXPublicClient.ticker()` endpoint.
-- It creates basic `scan_results` rows for matched symbols with `status = discovered`, `stage = ticker`, and all future workflow flags set to false.
-- It updates scan run summary counts including `total_active_symbols`, `ticker_rows_fetched`, and the zeroed future workflow counters.
-- It writes a `scan_runner` entry to `system_health_logs`.
+- It inserts `scan_results` rows for matched symbols with `status = discovered` and `stage = ticker`, then applies ticker-level prefilter rules in the same scan.
+- The prefilter uses the `app_settings` group `prefilter` plus `scan.max_prefilter_symbols` to update rows to `prefilter_passed` or `prefilter_rejected`.
+- Only `prefilter_passed` `scan_results` rows should proceed to candle fetching in the next task.
+- It updates `scan_runs.prefilter_passed_count`, stores the prefilter summary in `scan_runs.raw_payload`, and writes `scan_runner` and `prefilter_engine` entries to `system_health_logs`.
 
-This is intentionally only an orchestration skeleton. It does not prefilter yet, does not fetch candles yet, does not calculate metrics or scoring yet, does not create candidates or trade plans yet, and does not run continuously. It also does not place trades, use private CoinDCX APIs, require API keys, create simulated trades, or monitor active trades.
+This task still does not fetch candles, calculate metrics, score symbols, create watchlist candidates, create trade plans, create simulated trades, or run continuously. It also does not place trades, use private CoinDCX APIs, or require API keys.
