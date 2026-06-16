@@ -170,3 +170,20 @@ Task 10.1 adds the database foundation for this workflow with these tables:
 Between full scans, the MVP should not continuously fetch candles, score every coin, or poll orderbooks for the full market. Later continuous processes may monitor only shortlisted candidates, pending trade plans, active simulated trades, and system health. Active simulated trades may be monitored continuously because TP, SL, trailing stops, and expiry can happen at any time.
 
 This section documents schema support only. It does not add a scan runner, prefilter engine, scoring, candidate creation, trade-plan trigger monitoring, simulated trade creation, CoinDCX private APIs, API keys, or real trading.
+
+### Scheduled Scan Settings
+
+Task 10.2 adds configuration for scheduled/manual scan workflow settings in `app_settings`. Full-market scans are scheduled/manual only, with suggested defaults of `09:00`, `14:00`, `19:00`, and `22:30` IST stored in `scan.scheduled_times`. `scan.default_quote_filter` controls the default quote asset, while `prefilter.*` settings control which symbols can proceed to the future candle, metrics, and scoring stages.
+
+The `monitor.*` settings are only for lightweight candidate, trade-plan, active simulated-trade, and system-health monitoring. Continuous all-coin candle fetching, all-coin scoring, and all-coin orderbook polling are not part of the MVP.
+
+Seed and verify these settings with:
+
+```bash
+php artisan db:seed --class=AppSettingSeeder
+cd python
+python scripts/test_scan_settings.py
+```
+
+Task 10.2 is settings-only. It does not add a scan runner, prefilter engine, scoring, candidate creation, trade-plan creation, private CoinDCX APIs, API keys, or real trading.
+

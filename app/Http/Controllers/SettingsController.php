@@ -14,9 +14,17 @@ class SettingsController extends Controller
 {
     public function index(AppSettingsService $settings): View
     {
+        $settingsByGroup = $settings->allGrouped();
+        $preferredGroupOrder = ['scan', 'prefilter', 'monitor', 'trade_plan', 'scanner', 'trade', 'trailing', 'scoring', 'system', 'retention'];
+        $groupOrder = collect($preferredGroupOrder)
+            ->merge(array_keys($settingsByGroup))
+            ->unique()
+            ->values()
+            ->all();
+
         return view('settings.index', [
-            'settingsByGroup' => $settings->allGrouped(),
-            'groupOrder' => ['scanner', 'trade', 'trailing', 'scoring', 'system'],
+            'settingsByGroup' => $settingsByGroup,
+            'groupOrder' => $groupOrder,
         ]);
     }
 
@@ -32,7 +40,20 @@ class SettingsController extends Controller
             ['keys.*' => [Rule::exists('app_settings', 'key')]]
         )->validate();
 
+        $settings = AppSetting::whereIn('key', array_keys($validated['settings'] ?? []))
+            ->get()
+            ->keyBy('key');
+
         foreach ($validated['settings'] ?? [] as $key => $value) {
+            $setting = $settings->get($key);
+
+            if ($setting?->value_type === 'json' && $value !== null && $value !== '') {
+                Validator::make(
+                    ['value' => $value],
+                    ['value' => ['json']]
+                )->validate();
+            }
+
             AppSetting::where('key', $key)
                 ->where('is_editable', true)
                 ->update(['value' => $value]);

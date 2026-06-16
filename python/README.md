@@ -208,3 +208,29 @@ This one-shot market context engine resolves active BTC and ETH spot symbols fro
 It writes a `market_context_engine` health log entry to `system_health_logs` and prints a readable summary containing the resolved symbols, latest prices, market condition, insert status, and warnings/errors.
 
 This task prepares broad-market context only. It does not score symbols, calculate `final_score`, create candidates, create simulated trades, monitor trades, place trades, use private CoinDCX APIs, or require API keys.
+
+## Scheduled Scan Settings
+
+Full-market scans are scheduled/manual only for the MVP. They are not intended to run as a continuous all-coin scanner. The suggested default scan times are `09:00`, `14:00`, `19:00`, and `22:30` IST.
+
+The Laravel `app_settings` table stores the scan workflow configuration:
+
+- `scan.scheduled_times` stores the daily scheduled scan times as JSON, for example `["09:00","14:00","19:00","22:30"]`.
+- `scan.timezone` stores the timezone used for those scheduled times. The default is `Asia/Kolkata`.
+- `scan.default_quote_filter` controls the default quote asset for a scan, such as `USDT`, `INR`, or `ALL`.
+- `prefilter.*` settings control which ticker symbols are allowed to proceed to the future candle, metrics, and scoring stages.
+- `monitor.*` settings are for lightweight candidate, pending trade-plan, active simulated-trade, and system-health monitoring only.
+
+Continuous all-coin candle fetching, all-coin scoring, and all-coin orderbook polling are not part of the MVP. This settings test does not run scans, fetch tickers/candles/orderbooks, score symbols, create candidates, create trade plans, place trades, or use private CoinDCX APIs.
+
+Seed the default settings from the Laravel project root:
+
+```bash
+php artisan db:seed --class=AppSettingSeeder
+```
+
+Verify the Python settings reader from inside the `python` folder:
+
+```bash
+python scripts/test_scan_settings.py
+```
