@@ -5,11 +5,8 @@ from typing import Any
 from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import execute, execute_many, fetch_all
 from cryptospot.health import write_health_log
-from cryptospot.logger import get_logger
 
 SERVICE_NAME = "ticker_snapshot_collector"
-
-logger = get_logger(__name__)
 
 
 def normalize_symbol(value: str) -> str:
@@ -169,15 +166,13 @@ class TickerSnapshotCollector:
                 message = f"No active spot symbols found. {message}"
 
             write_health_log(SERVICE_NAME, status, message, summary)
-            logger.info("Ticker snapshot completed: %s", message)
             return summary
         except Exception as exc:
             summary["errors"].append(str(exc))
             try:
                 write_health_log(SERVICE_NAME, "error", str(exc), summary)
-            except Exception as health_exc:
-                logger.error("Failed writing health error log: %s", health_exc)
-            logger.error("Ticker snapshot failed: %s", exc)
+            except Exception:
+                pass
             raise
 
     def _load_active_symbols(self) -> dict:
