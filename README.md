@@ -85,3 +85,16 @@ The default local environment targets MySQL database `crypto_spot_intraday` with
 ## MVP Scope
 
 Task 1 only sets up the Laravel foundation, single-user login, dashboard shell, and module placeholders. CoinDCX API integration, scanners, scoring, simulated trades, analytics, and real market data collection are intentionally not implemented yet.
+
+## Troubleshooting
+
+If an early migration attempt failed with `Specified key was too long`, drop the partially created local tables or recreate the local development database, then run migrations again:
+
+```sql
+DROP DATABASE crypto_spot_intraday;
+CREATE DATABASE crypto_spot_intraday CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+```bash
+php artisan migrate --seed
+```
