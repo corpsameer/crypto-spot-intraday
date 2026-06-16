@@ -14,9 +14,17 @@ class SettingsController extends Controller
 {
     public function index(AppSettingsService $settings): View
     {
+        $settingsByGroup = $settings->allGrouped();
+        $preferredGroupOrder = ['scan', 'prefilter', 'monitor', 'trade_plan', 'scanner', 'trade', 'trailing', 'scoring', 'system', 'retention'];
+        $groupOrder = collect($preferredGroupOrder)
+            ->merge(array_keys($settingsByGroup))
+            ->unique()
+            ->values()
+            ->all();
+
         return view('settings.index', [
-            'settingsByGroup' => $settings->allGrouped(),
-            'groupOrder' => ['scan', 'prefilter', 'monitor', 'trade_plan', 'scanner', 'trade', 'trailing', 'scoring', 'system', 'retention'],
+            'settingsByGroup' => $settingsByGroup,
+            'groupOrder' => $groupOrder,
         ]);
     }
 
