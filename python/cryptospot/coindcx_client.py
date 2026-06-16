@@ -2,9 +2,7 @@ import time
 
 import requests
 
-from cryptospot.config import COINDCX_PUBLIC_BASE_URL
-
-COINDCX_CANDLE_BASE_URL = "https://public.coindcx.com"
+from cryptospot.config import COINDCX_CANDLE_BASE_URL, COINDCX_PUBLIC_BASE_URL
 
 
 class CoinDCXPublicClient:
