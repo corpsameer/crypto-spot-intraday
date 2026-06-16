@@ -148,3 +148,23 @@ Validate orderbook liquidity collection from the Python directory:
 ```bash
 python scripts/run_orderbook_collection_once.py --quote USDT --limit 3 --target-notional 100
 ```
+
+## Run One-Shot Data Cleanup
+
+Start with a dry run from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_data_cleanup_once.py --dry-run
+```
+
+Run actual cleanup:
+
+```bash
+python scripts/run_data_cleanup_once.py
+```
+
+The cleanup deletes old rows from `candles`, `scanner_metrics`, `market_snapshots`, and `system_health_logs` based on the `retention.*` values in `app_settings`. Candle cleanup is timeframe-specific, so each configured timeframe has its own retention window.
+
+The cleanup never deletes `spot_symbols`, `candidate_watchlists`, `simulated_trades`, `trade_events`, or `missed_gainers`. It writes a `data_cleanup` entry to `system_health_logs` with the cleanup summary.
+
+Use `--dry-run` first to count rows that would be deleted without changing the database, then run without `--dry-run` when you are ready to remove old time-series rows.
