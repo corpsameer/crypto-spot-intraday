@@ -10,11 +10,11 @@ return new class extends Migration
     {
         Schema::create('spot_symbols', function (Blueprint $table): void {
             $table->id();
-            $table->string('coindcx_symbol')->unique();
-            $table->string('base_asset')->nullable()->index();
-            $table->string('quote_asset')->nullable()->index();
-            $table->string('display_name')->nullable();
-            $table->string('status')->default('active')->index();
+            $table->string('coindcx_symbol', 32)->unique();
+            $table->string('base_asset', 32)->nullable()->index();
+            $table->string('quote_asset', 32)->nullable()->index();
+            $table->string('display_name', 64)->nullable();
+            $table->string('status', 32)->default('active')->index();
             $table->boolean('is_active')->default(true)->index();
             $table->decimal('min_price', 30, 12)->nullable();
             $table->decimal('max_price', 30, 12)->nullable();

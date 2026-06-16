@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('app_settings', function (Blueprint $table): void {
-            $table->id(); $table->string('key')->unique(); $table->text('value')->nullable(); $table->string('value_type')->default('string'); $table->string('group')->nullable()->index(); $table->string('label')->nullable(); $table->text('description')->nullable(); $table->boolean('is_editable')->default(true)->index(); $table->timestamps();
+            $table->id(); $table->string('key', 128)->unique(); $table->text('value')->nullable(); $table->string('value_type', 32)->default('string'); $table->string('group', 32)->nullable()->index(); $table->string('label')->nullable(); $table->text('description')->nullable(); $table->boolean('is_editable')->default(true)->index(); $table->timestamps();
         });
 
     }

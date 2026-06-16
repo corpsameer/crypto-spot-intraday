@@ -23,7 +23,7 @@ return new class extends Migration
             $table->decimal('eth_change_1h_percent', 12, 4)->nullable();
             $table->decimal('eth_change_4h_percent', 12, 4)->nullable();
             $table->decimal('eth_change_24h_percent', 12, 4)->nullable();
-            $table->string('market_condition')->nullable()->index();
+            $table->string('market_condition', 32)->nullable()->index();
             $table->text('notes')->nullable();
             $table->json('raw_payload')->nullable();
             $table->timestamps();

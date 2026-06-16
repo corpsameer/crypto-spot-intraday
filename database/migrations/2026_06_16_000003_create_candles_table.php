@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('candles', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('spot_symbol_id')->constrained('spot_symbols')->cascadeOnDelete();
-            $table->string('coindcx_symbol')->index();
-            $table->string('timeframe')->index();
+            $table->string('coindcx_symbol', 32)->index();
+            $table->string('timeframe', 16)->index();
             $table->timestamp('candle_time')->index();
             $table->decimal('open', 30, 12);
             $table->decimal('high', 30, 12);

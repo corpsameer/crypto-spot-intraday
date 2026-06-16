@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('system_health_logs', function (Blueprint $table): void {
-            $table->id(); $table->string('service_name')->index(); $table->string('status')->index(); $table->text('message')->nullable(); $table->timestamp('checked_at')->index(); $table->json('meta')->nullable(); $table->timestamps();
+            $table->id(); $table->string('service_name', 64)->index(); $table->string('status', 32)->index(); $table->text('message')->nullable(); $table->timestamp('checked_at')->index(); $table->json('meta')->nullable(); $table->timestamps();
         });
 
     }
