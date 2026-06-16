@@ -88,6 +88,12 @@ Run selected timeframes only:
 python scripts/run_candle_collection_once.py --limit 5 --timeframes 5m,15m,1h
 ```
 
+Run only BTC and ETH candles for market context:
+
+```bash
+python scripts/run_candle_collection_once.py --base-assets BTC,ETH --timeframes 1m,5m,15m,1h
+```
+
 This one-shot collector fetches recent CoinDCX public candle data for active spot symbols and stores it in the `candles` table. It writes a `candle_collector` health log entry and uses public market data only.
 
 This is not the continuous monitor yet. It does not calculate metrics, score symbols, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
@@ -182,3 +188,23 @@ This one-shot metrics engine calculates candle-based scanner metrics for active 
 Calculated metrics include short-term price changes, volume spikes, distance from the 24h high, candle close strength, upper/lower wick percentages, relative strength versus BTC, and a simple placeholder overextension risk.
 
 This prepares data for a future scoring engine only. It does not calculate `final_score`, create candidates, create simulated trades, place trades, use private CoinDCX APIs, or require API keys.
+
+## Run One-Shot Market Context Engine
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_market_context_once.py
+```
+
+Recommended before running market context, collect recent BTC/ETH candles for the required timeframes:
+
+```bash
+python scripts/run_candle_collection_once.py --base-assets BTC,ETH --timeframes 1m,5m,15m,1h
+```
+
+This one-shot market context engine resolves active BTC and ETH spot symbols from `spot_symbols`, preferring USDT pairs and falling back to INR pairs. It calculates BTC/ETH 5m, 15m, 1h, 4h, and 24h context from existing `candles` table data, classifies the broad market as `bullish`, `neutral`, `bearish`, `volatile`, or `unknown`, and inserts a fresh row into `market_snapshots`.
+
+It writes a `market_context_engine` health log entry to `system_health_logs` and prints a readable summary containing the resolved symbols, latest prices, market condition, insert status, and warnings/errors.
+
+This task prepares broad-market context only. It does not score symbols, calculate `final_score`, create candidates, create simulated trades, monitor trades, place trades, use private CoinDCX APIs, or require API keys.

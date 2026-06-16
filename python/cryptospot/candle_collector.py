@@ -151,7 +151,7 @@ class CandleCollector:
     def __init__(self, client: CoinDCXPublicClient = None):
         self.client = client or CoinDCXPublicClient()
 
-    def run(self, symbols_limit: int = None, timeframes: list = None) -> dict:
+    def run(self, symbols_limit: int = None, timeframes: list = None, base_assets: list = None) -> dict:
         summary = {
             "active_symbols": 0,
             "symbols_processed": 0,
@@ -167,8 +167,9 @@ class CandleCollector:
             selected_timeframes = self._normalize_timeframes(timeframes)
             summary["timeframes"] = selected_timeframes
 
-            active_symbols = self._load_active_symbols()
+            active_symbols = self._load_active_symbols(base_assets=base_assets)
             summary["active_symbols"] = len(active_symbols)
+            summary["base_assets"] = self._normalize_base_assets(base_assets)
             if symbols_limit is not None:
                 active_symbols = active_symbols[: max(symbols_limit, 0)]
 
@@ -232,15 +233,35 @@ class CandleCollector:
                 pass
             raise
 
-    def _load_active_symbols(self) -> list[dict]:
+    def _load_active_symbols(self, base_assets: list = None) -> list[dict]:
+        normalized_base_assets = self._normalize_base_assets(base_assets)
+        params = []
+        base_filter = ""
+        if normalized_base_assets:
+            placeholders = ", ".join(["%s"] * len(normalized_base_assets))
+            base_filter = f"AND base_asset IN ({placeholders})"
+            params.extend(normalized_base_assets)
+
         return fetch_all(
-            """
+            f"""
             SELECT id, coindcx_symbol, api_pair, base_asset, quote_asset
             FROM spot_symbols
             WHERE is_active = 1
-            ORDER BY coindcx_symbol ASC
-            """
+            {base_filter}
+            ORDER BY base_asset ASC, quote_asset DESC, coindcx_symbol ASC
+            """,
+            tuple(params),
         )
+
+    def _normalize_base_assets(self, base_assets: list = None) -> list[str]:
+        if not base_assets:
+            return []
+        normalized = []
+        for asset in base_assets:
+            value = str(asset or "").strip().upper()
+            if value and value not in normalized:
+                normalized.append(value)
+        return normalized
 
     def _candle_pair(self, symbol: dict) -> str:
         api_pair = str(symbol.get("api_pair") or "").strip()
