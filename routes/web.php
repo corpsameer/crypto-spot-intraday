@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SpotSymbolController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
@@ -20,6 +21,8 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
 
     Route::middleware('auth')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::get('/spot-symbols', [SpotSymbolController::class, 'index'])->name('spot-symbols.index');
+        Route::post('/spot-symbols/sync', [SpotSymbolController::class, 'sync'])->name('spot-symbols.sync');
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('/logout', LogoutController::class)->name('logout');

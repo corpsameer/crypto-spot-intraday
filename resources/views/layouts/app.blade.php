@@ -19,12 +19,20 @@
         .card { background: #fff; border: 1px solid #e5e7eb; border-radius: .75rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); padding: 1.25rem; }
         .status { color: #2563eb; font-size: .875rem; font-weight: 700; margin-top: .75rem; text-transform: uppercase; }
         .card-link { color: inherit; display: block; text-decoration: none; }
+        .alert-error { background: #fee2e2; border: 1px solid #fca5a5; border-radius: .5rem; color: #991b1b; margin-bottom: 1rem; padding: .75rem 1rem; }
         .alert-success { background: #dcfce7; border: 1px solid #86efac; border-radius: .5rem; color: #166534; margin-bottom: 1rem; padding: .75rem 1rem; }
         .settings-group { margin-bottom: 1rem; }
         .setting-row { align-items: start; border-top: 1px solid #e5e7eb; display: grid; gap: 1rem; grid-template-columns: 1fr minmax(180px, 280px); padding: 1rem 0; }
         .setting-key, .setting-description { color: #6b7280; font-size: .875rem; margin: .25rem 0 0; }
         input[readonly] { background: #f3f4f6; color: #6b7280; }
         input { border: 1px solid #d1d5db; border-radius: .375rem; padding: .5rem; width: 100%; }
+        .table { border-collapse: collapse; width: 100%; }
+        .table th, .table td { border-top: 1px solid #e5e7eb; padding: .75rem; text-align: left; }
+        .table th { color: #4b5563; font-size: .8rem; text-transform: uppercase; }
+        .badge { border-radius: 999px; display: inline-block; font-size: .75rem; font-weight: 700; padding: .2rem .5rem; }
+        .badge-active { background: #dcfce7; color: #166534; }
+        .badge-inactive { background: #fee2e2; color: #991b1b; }
+        .actions { align-items: center; display: flex; gap: .75rem; }
         .primary-button { background: #2563eb; border: 0; border-radius: .375rem; color: #fff; cursor: pointer; font-weight: 700; padding: .75rem 1rem; }
     </style>
 </head>
@@ -32,6 +40,7 @@
     <nav class="navbar">
         <a class="brand" href="{{ route('cryptospot.dashboard') }}">Crypto Spot Intraday</a>
         <div class="nav-right">
+            <a class="nav-link" href="{{ route('cryptospot.spot-symbols.index') }}">Spot Symbols</a>
             <a class="nav-link" href="{{ route('cryptospot.settings.index') }}">Settings</a>
             <span>{{ auth()->user()->email }}</span>
             <form method="POST" action="{{ route('cryptospot.logout') }}">
@@ -42,6 +51,14 @@
     </nav>
 
     <main class="container">
+        @if (session('success'))
+            <div class="alert-success">{{ session('success') }}</div>
+        @endif
+
+        @if ($errors->any())
+            <div class="alert-error">{{ $errors->first() }}</div>
+        @endif
+
         @yield('content')
     </main>
 </body>
