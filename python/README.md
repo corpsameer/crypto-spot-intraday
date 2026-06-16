@@ -61,6 +61,19 @@ Expected behavior:
 - The health log test inserts a row into `system_health_logs`.
 - The CoinDCX client test fetches public markets and ticker data, then attempts an orderbook request for one active DB symbol if available.
 
+
+## Run One-Shot Ticker Snapshot
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_ticker_snapshot_once.py
+```
+
+This one-shot collector fetches the latest CoinDCX public ticker values and stores matched active spot symbols in `scanner_metrics`. It also stores BTC/ETH market context in `market_snapshots` and writes a `ticker_snapshot_collector` health log entry.
+
+This is not the continuous monitor yet. It does not place trades, use private CoinDCX APIs, require API keys, create candidates, score symbols, or create simulated trades.
+
 ## Safety Notes
 
 - CoinDCX integration is public-only.
