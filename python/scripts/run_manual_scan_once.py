@@ -16,16 +16,18 @@ def main() -> int:
     parser.add_argument("--name", default=None, help="Scan name, for example: Manual Test Scan")
     parser.add_argument("--quote", default=None, help="Quote asset filter, for example: USDT, INR, or ALL")
     parser.add_argument("--limit", type=int, default=None, help="Optional active-symbol limit for testing")
+    parser.add_argument("--timeframes", default=None, help="Optional comma-separated candle timeframes for scan candidates, for example: 1m,5m,15m")
     args = parser.parse_args()
 
-    summary = ScanRunner().run_manual_scan(scan_name=args.name, quote_filter=args.quote, limit=args.limit)
+    timeframes = [item.strip() for item in args.timeframes.split(",") if item.strip()] if args.timeframes else None
+    summary = ScanRunner().run_manual_scan(scan_name=args.name, quote_filter=args.quote, limit=args.limit, timeframes=timeframes)
 
     print("Manual scan summary")
     print("===================")
     for key in (
         "scan_run_id", "run_uuid", "scan_type", "scan_name", "status", "quote_filter",
         "active_symbols", "ticker_rows_fetched", "matched_symbols", "scan_results_created",
-        "prefilter", "duration_seconds", "skipped", "errors",
+        "prefilter", "candles", "duration_seconds", "skipped", "errors",
     ):
         print(f"{key}: {json.dumps(summary.get(key), default=str)}")
 

@@ -252,7 +252,31 @@ The manual scan runner now performs the scheduled/manual MVP scan flow through t
 - It fetches CoinDCX ticker data once for the scan through the public `CoinDCXPublicClient.ticker()` endpoint.
 - It inserts `scan_results` rows for matched symbols with `status = discovered` and `stage = ticker`, then applies ticker-level prefilter rules in the same scan.
 - The prefilter uses the `app_settings` group `prefilter` plus `scan.max_prefilter_symbols` to update rows to `prefilter_passed` or `prefilter_rejected`.
-- Only `prefilter_passed` `scan_results` rows should proceed to candle fetching in the next task.
-- It updates `scan_runs.prefilter_passed_count`, stores the prefilter summary in `scan_runs.raw_payload`, and writes `scan_runner` and `prefilter_engine` entries to `system_health_logs`.
+- Only `prefilter_passed` `scan_results` rows proceed to the optional scan-based candle fetching step when `scan.fetch_candles_for_candidates` is enabled.
+- It updates `scan_runs.prefilter_passed_count`, stores scan summaries in `scan_runs.raw_payload`, and writes `scan_runner`, `prefilter_engine`, and optional `scan_candle_collector` entries to `system_health_logs`.
 
-This task still does not fetch candles, calculate metrics, score symbols, create watchlist candidates, create trade plans, create simulated trades, or run continuously. It also does not place trades, use private CoinDCX APIs, or require API keys.
+This task still does not calculate metrics, score symbols, create watchlist candidates, create trade plans, create simulated trades, or run continuously. It also does not place trades, use private CoinDCX APIs, or require API keys.
+
+## Run Manual Scan With Prefilter and Scan-Based Candles
+
+Run this command from inside the `python` folder after activating the virtual environment:
+
+```bash
+python scripts/run_manual_scan_once.py --name "Scan With Candles" --quote USDT --limit 100
+```
+
+Optionally restrict scan-candidate candle timeframes for a manual test:
+
+```bash
+python scripts/run_manual_scan_once.py --name "Scan With Candles" --quote USDT --limit 100 --timeframes 1m,5m,15m
+```
+
+When `scan.fetch_candles_for_candidates` is enabled in `app_settings`, the scan runner fetches candles only for `scan_results` rows from the current `scan_run` where `prefilter_passed = 1`. It uses the scan result `api_pair` first and falls back only to `spot_symbols.api_pair`; it does not fetch candles for all active symbols as part of the MVP scan workflow.
+
+The candle step updates successful prefilter-passed rows from `prefilter_passed` to `status = candles_fetched` and `stage = candles`. Rows that cannot be fetched are marked `status = failed`, `stage = candles`, with `rejection_reason` such as `missing_api_pair` or `candle_fetch_failed`. Prefilter-rejected rows are not attempted for candle fetching.
+
+The scan runner also updates `scan_runs.candles_fetched_count` to the number of scan results that successfully fetched and stored candles, and writes a `scan_candle_collector` health log.
+
+This scan-based candle step still does not calculate scan metrics, calculate `final_score`, score candidates, create `candidate_watchlists`, create `trade_plans`, create `simulated_trades`, place trades, use private CoinDCX APIs, or require API keys.
+
+The older `scripts/run_candle_collection_once.py` script remains available only for manual debugging or backfill. Do not run it continuously for all coins, and do not use it as an all-market scanner in the MVP workflow.

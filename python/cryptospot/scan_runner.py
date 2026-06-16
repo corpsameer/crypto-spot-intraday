@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 
+from cryptospot.candle_collector import CandleCollector
 from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
@@ -44,11 +45,22 @@ def _first_float(row: dict, keys: tuple[str, ...]):
     return None
 
 
+def _derive_quote_volume_24h(row: dict, volume_24h, last_price):
+    quote_volume = _first_float(row, ("quote_volume", "quote_volume_24h", "quoteVolume"))
+    if quote_volume is not None:
+        return quote_volume
+    if volume_24h is not None and last_price is not None:
+        return volume_24h * last_price
+    return None
+
+
 def normalize_ticker_row(row: dict) -> dict:
     symbol = extract_ticker_symbol(row)
     last_price = _first_float(row, ("last_price", "last", "price", "close"))
     bid_price = _first_float(row, ("bid", "best_bid", "bid_price"))
     ask_price = _first_float(row, ("ask", "best_ask", "ask_price"))
+    volume_24h = _first_float(row, ("volume", "volume_24h"))
+    quote_volume_24h = _derive_quote_volume_24h(row, volume_24h, last_price)
     spread_percent = None
 
     if bid_price and ask_price:
@@ -61,8 +73,8 @@ def normalize_ticker_row(row: dict) -> dict:
         "last_price": last_price,
         "high_24h": _first_float(row, ("high", "high_24h")),
         "low_24h": _first_float(row, ("low", "low_24h")),
-        "volume_24h": _first_float(row, ("volume", "volume_24h")),
-        "quote_volume_24h": _first_float(row, ("quote_volume", "quote_volume_24h")),
+        "volume_24h": volume_24h,
+        "quote_volume_24h": quote_volume_24h,
         "change_24h_percent": _first_float(row, ("change_24_hour", "change_24h", "change_24h_percent", "percent_change")),
         "bid_price": bid_price,
         "ask_price": ask_price,
@@ -75,7 +87,7 @@ class ScanRunner:
     def __init__(self, client: CoinDCXPublicClient = None):
         self.client = client or CoinDCXPublicClient()
 
-    def run_manual_scan(self, scan_name: str = None, quote_filter: str = None, limit: int = None) -> dict:
+    def run_manual_scan(self, scan_name: str = None, quote_filter: str = None, limit: int = None, timeframes: list = None) -> dict:
         started = datetime.now()
         summary = {
             "scan_run_id": None,
@@ -94,6 +106,10 @@ class ScanRunner:
                 "rejected": 0,
                 "max_prefilter_symbols": 50,
                 "errors": [],
+            },
+            "candles": {
+                "enabled": False,
+                "skipped_reason": "not started",
             },
             "duration_seconds": 0,
             "skipped": 0,
@@ -173,6 +189,18 @@ class ScanRunner:
             }
             if prefilter_summary.get("errors"):
                 summary["errors"].extend([f"Prefilter: {error}" for error in prefilter_summary.get("errors", [])])
+
+            if bool(settings_snapshot["scan"].get("scan.fetch_candles_for_candidates", True)):
+                candle_summary = CandleCollector(client=self.client).run_for_scan_run(summary["scan_run_id"], timeframes=timeframes)
+                candle_summary["enabled"] = True
+                summary["candles"] = candle_summary
+                if candle_summary.get("errors"):
+                    summary["errors"].extend([f"Candles: {error}" for error in candle_summary.get("errors", [])])
+            else:
+                summary["candles"] = {
+                    "enabled": False,
+                    "skipped_reason": "scan.fetch_candles_for_candidates disabled",
+                }
 
             summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
             self._mark_scan_completed(summary)
@@ -296,7 +324,7 @@ class ScanRunner:
             UPDATE scan_runs
             SET status = 'completed', completed_at = %s, duration_seconds = %s,
                 total_active_symbols = %s, ticker_rows_fetched = %s,
-                prefilter_passed_count = %s, candles_fetched_count = 0, metrics_calculated_count = 0,
+                prefilter_passed_count = %s, candles_fetched_count = %s, metrics_calculated_count = 0,
                 scored_count = 0, watchlist_created_count = 0, trade_plans_created_count = 0,
                 raw_payload = %s, updated_at = %s
             WHERE id = %s
@@ -304,9 +332,21 @@ class ScanRunner:
             (
                 now, summary["duration_seconds"], summary["active_symbols"], summary["ticker_rows_fetched"],
                 summary.get("prefilter", {}).get("passed", 0),
+                self._count_candles_fetched_results(summary["scan_run_id"]),
                 json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"],
             ),
         )
+
+    def _count_candles_fetched_results(self, scan_run_id):
+        row = fetch_one(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM scan_results
+            WHERE scan_run_id = %s AND status = 'candles_fetched' AND stage = 'candles'
+            """,
+            (scan_run_id,),
+        )
+        return int(row.get("cnt") or 0) if row else 0
 
     def _mark_scan_failed(self, summary, error_message):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
