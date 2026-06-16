@@ -45,11 +45,22 @@ def _first_float(row: dict, keys: tuple[str, ...]):
     return None
 
 
+def _derive_quote_volume_24h(row: dict, volume_24h, last_price):
+    quote_volume = _first_float(row, ("quote_volume", "quote_volume_24h", "quoteVolume"))
+    if quote_volume is not None:
+        return quote_volume
+    if volume_24h is not None and last_price is not None:
+        return volume_24h * last_price
+    return None
+
+
 def normalize_ticker_row(row: dict) -> dict:
     symbol = extract_ticker_symbol(row)
     last_price = _first_float(row, ("last_price", "last", "price", "close"))
     bid_price = _first_float(row, ("bid", "best_bid", "bid_price"))
     ask_price = _first_float(row, ("ask", "best_ask", "ask_price"))
+    volume_24h = _first_float(row, ("volume", "volume_24h"))
+    quote_volume_24h = _derive_quote_volume_24h(row, volume_24h, last_price)
     spread_percent = None
 
     if bid_price and ask_price:
@@ -62,8 +73,8 @@ def normalize_ticker_row(row: dict) -> dict:
         "last_price": last_price,
         "high_24h": _first_float(row, ("high", "high_24h")),
         "low_24h": _first_float(row, ("low", "low_24h")),
-        "volume_24h": _first_float(row, ("volume", "volume_24h")),
-        "quote_volume_24h": _first_float(row, ("quote_volume", "quote_volume_24h")),
+        "volume_24h": volume_24h,
+        "quote_volume_24h": quote_volume_24h,
         "change_24h_percent": _first_float(row, ("change_24_hour", "change_24h", "change_24h_percent", "percent_change")),
         "bid_price": bid_price,
         "ask_price": ask_price,
