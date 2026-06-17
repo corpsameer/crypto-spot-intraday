@@ -6,8 +6,10 @@ from cryptospot.candle_collector import CandleCollector
 from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
+from cryptospot.market_context_engine import MarketContextEngine
 from cryptospot.metrics_engine import MetricsEngine
 from cryptospot.prefilter_engine import PrefilterEngine
+from cryptospot.scan_liquidity_collector import ScanLiquidityCollector
 from cryptospot.settings import get_settings_by_group
 
 SERVICE_NAME = "scan_runner"
@@ -101,12 +103,27 @@ class ScanRunner:
             "ticker_rows_fetched": 0,
             "matched_symbols": 0,
             "scan_results_created": 0,
+            "market_context": {
+                "enabled": True,
+                "market_snapshot_id": None,
+                "btc_symbol": None,
+                "eth_symbol": None,
+                "btc_price": None,
+                "eth_price": None,
+                "market_condition": None,
+                "snapshot_inserted": False,
+                "errors": [],
+            },
             "prefilter": {
                 "total_discovered": 0,
                 "passed": 0,
                 "rejected": 0,
                 "max_prefilter_symbols": 50,
                 "errors": [],
+            },
+            "liquidity": {
+                "enabled": False,
+                "skipped_reason": "not started",
             },
             "candles": {
                 "enabled": False,
@@ -158,6 +175,25 @@ class ScanRunner:
             summary["run_uuid"] = run_uuid
             summary["scan_run_id"] = self._create_scan_run(run_uuid, summary["scan_name"], resolved_quote_filter, settings_snapshot)
 
+            try:
+                summary["market_context"] = MarketContextEngine().run(source="scan_runner", scan_run_id=summary["scan_run_id"])
+                summary["market_context"]["enabled"] = True
+                if summary["market_context"].get("errors"):
+                    summary["errors"].extend([f"Market context: {error}" for error in summary["market_context"].get("errors", [])])
+            except Exception as exc:
+                summary["market_context"] = {
+                    "enabled": True,
+                    "market_snapshot_id": None,
+                    "btc_symbol": None,
+                    "eth_symbol": None,
+                    "btc_price": None,
+                    "eth_price": None,
+                    "market_condition": None,
+                    "snapshot_inserted": False,
+                    "errors": [str(exc)],
+                }
+                summary["errors"].append(f"Market context: {exc}")
+
             active_symbols = self._load_active_symbols(resolved_quote_filter, limit)
             summary["active_symbols"] = len(active_symbols)
 
@@ -198,6 +234,17 @@ class ScanRunner:
             }
             if prefilter_summary.get("errors"):
                 summary["errors"].extend([f"Prefilter: {error}" for error in prefilter_summary.get("errors", [])])
+
+            if bool(settings_snapshot["scan"].get("scan.fetch_orderbook_for_candidates", True)):
+                liquidity_summary = ScanLiquidityCollector(client=self.client).run_for_scan_run(summary["scan_run_id"])
+                summary["liquidity"] = liquidity_summary
+                if liquidity_summary.get("errors"):
+                    summary["errors"].extend([f"Liquidity: {error}" for error in liquidity_summary.get("errors", [])])
+            else:
+                summary["liquidity"] = {
+                    "enabled": False,
+                    "skipped_reason": "scan.fetch_orderbook_for_candidates disabled",
+                }
 
             if bool(settings_snapshot["scan"].get("scan.fetch_candles_for_candidates", True)):
                 candle_summary = CandleCollector(client=self.client).run_for_scan_run(summary["scan_run_id"], timeframes=timeframes)

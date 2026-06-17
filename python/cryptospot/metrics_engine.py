@@ -164,7 +164,9 @@ class MetricsEngine:
                 sr.last_price,
                 sr.change_24h_percent AS ticker_change_24h_percent,
                 sr.quote_volume_24h,
-                sr.spread_percent AS ticker_spread_percent
+                sr.spread_percent AS scan_spread_percent,
+                sr.orderbook_depth_usdt AS scan_orderbook_depth_usdt,
+                sr.slippage_estimate_percent AS scan_slippage_estimate_percent
             FROM scan_results sr
             WHERE sr.scan_run_id = %s
               AND sr.prefilter_passed = 1
@@ -180,7 +182,7 @@ class MetricsEngine:
             return None
 
         symbol = scan_result.get("coindcx_symbol")
-        orderbook = self._load_latest_orderbook_metric(symbol)
+        orderbook = self._load_scan_liquidity_metric(scan_result) or self._load_latest_orderbook_metric(symbol)
         latest_candle = self._latest_candle(candles)
         latest_close = safe_float(latest_candle.get("close")) if latest_candle else safe_float(scan_result.get("last_price"))
 
@@ -199,11 +201,11 @@ class MetricsEngine:
         candle_close_strength, upper_wick, lower_wick = self._candle_shape_metrics(wick_candle)
         relative_strength = self._relative_strength(change_1h, change_24h, market_snapshot)
 
-        spread = safe_float(orderbook.get("spread_percent")) if orderbook else safe_float(scan_result.get("ticker_spread_percent"))
+        spread = self._first_available(safe_float(scan_result.get("scan_spread_percent")), safe_float(orderbook.get("spread_percent")) if orderbook else None)
         bid_price = orderbook.get("bid_price") if orderbook else None
         ask_price = orderbook.get("ask_price") if orderbook else None
-        depth = orderbook.get("orderbook_depth_usdt") if orderbook else None
-        slippage = orderbook.get("slippage_estimate_percent") if orderbook else None
+        depth = self._first_available(safe_float(scan_result.get("scan_orderbook_depth_usdt")), safe_float(orderbook.get("orderbook_depth_usdt")) if orderbook else None)
+        slippage = self._first_available(safe_float(scan_result.get("scan_slippage_estimate_percent")), safe_float(orderbook.get("slippage_estimate_percent")) if orderbook else None)
         overextension_risk = self._overextension_risk(change_15m, change_1h, upper_wick, spread)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -238,6 +240,7 @@ class MetricsEngine:
             "source_candle_counts": {tf: len(rows) for tf, rows in candles.items()},
             "latest_close": latest_close,
             "selected_wick_candle": self._compact_candle(wick_candle),
+            "liquidity_source": orderbook.get("liquidity_source") if orderbook else ("scan_result" if any(scan_result.get(k) is not None for k in ("scan_spread_percent", "scan_orderbook_depth_usdt", "scan_slippage_estimate_percent")) else None),
             "latest_orderbook_metric": self._metric_ref(orderbook),
             "latest_market_snapshot_time": market_snapshot.get("snapshot_time") if market_snapshot else None,
             "calculated_metrics": metrics,
@@ -469,6 +472,36 @@ class MetricsEngine:
             """,
             (symbol,),
         )
+
+    def _load_scan_liquidity_metric(self, scan_result: dict) -> dict | None:
+        metric = fetch_one(
+            """
+            SELECT id, metric_time, spread_percent, bid_price, ask_price, orderbook_depth_usdt, slippage_estimate_percent
+            FROM scanner_metrics
+            WHERE coindcx_symbol = %s
+              AND JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.source')) = 'scan_liquidity_refresh'
+              AND JSON_EXTRACT(raw_payload, '$.scan_run_id') = %s
+              AND JSON_EXTRACT(raw_payload, '$.scan_result_id') = %s
+            ORDER BY metric_time DESC, id DESC
+            LIMIT 1
+            """,
+            (scan_result.get("coindcx_symbol"), scan_result.get("scan_run_id"), scan_result.get("scan_result_id")),
+        )
+        if metric:
+            metric["liquidity_source"] = "scan_liquidity_refresh"
+            return metric
+        if any(scan_result.get(k) is not None for k in ("scan_spread_percent", "scan_orderbook_depth_usdt", "scan_slippage_estimate_percent")):
+            return {
+                "id": None,
+                "metric_time": None,
+                "spread_percent": scan_result.get("scan_spread_percent"),
+                "bid_price": None,
+                "ask_price": None,
+                "orderbook_depth_usdt": scan_result.get("scan_orderbook_depth_usdt"),
+                "slippage_estimate_percent": scan_result.get("scan_slippage_estimate_percent"),
+                "liquidity_source": "scan_result",
+            }
+        return None
 
     def _load_latest_orderbook_metric(self, symbol: str) -> dict | None:
         return fetch_one(
