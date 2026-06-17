@@ -51,6 +51,11 @@
         .badge-red { background: #fee2e2; color: #991b1b; }
         .badge-blue { background: #dbeafe; color: #1e40af; }
         .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-purple { background: #ede9fe; color: #5b21b6; }
+        .badge-orange { background: #ffedd5; color: #9a3412; }
+        .muted { color: #6b7280; }
+        .nowrap { white-space: nowrap; }
+        .small { font-size: .85rem; }
         .badge-gray { background: #f3f4f6; color: #4b5563; }
         .details-panel { min-width: 220px; }
         .details-panel summary { color: #2563eb; cursor: pointer; font-weight: 700; }
@@ -64,6 +69,8 @@
         <div class="nav-right">
             <a class="nav-link" href="{{ route('cryptospot.spot-symbols.index') }}">Spot Symbols</a>
             <a class="nav-link" href="{{ route('cryptospot.scans.latest') }}">Market Scanner</a>
+            <a class="nav-link" href="{{ route('cryptospot.watchlist.index') }}">Watchlist</a>
+            <a class="nav-link" href="{{ route('cryptospot.trade-plans.index') }}">Trade Plans</a>
             <a class="nav-link" href="{{ route('cryptospot.settings.index') }}">Settings</a>
             <span>{{ auth()->user()->email }}</span>
             <form method="POST" action="{{ route('cryptospot.logout') }}">

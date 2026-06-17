@@ -6,6 +6,13 @@
         <p class="subtitle">CoinDCX Spot Research &amp; Simulation Tool</p>
     </header>
 
+    <section class="grid metric-grid" aria-label="Watchlist and trade plan summary">
+        <article class="card metric-card"><span>Active watchlist candidates</span><strong>{{ $dashboardStats['active_watchlist_count'] }}</strong></article>
+        <article class="card metric-card"><span>Pending trade plans</span><strong>{{ $dashboardStats['pending_trade_plan_count'] }}</strong></article>
+        <article class="card metric-card"><span>Latest top plan</span><strong>{{ $dashboardStats['latest_top_plan'] ? $dashboardStats['latest_top_plan']->coindcx_symbol . ' / ' . number_format((float) $dashboardStats['latest_top_plan']->score, 2) : '-' }}</strong></article>
+        <article class="card metric-card"><span>Expiring soon</span><strong>{{ $dashboardStats['expiring_soon_count'] }}</strong></article>
+    </section>
+
     <section class="grid" aria-label="Future modules">
         @foreach ($modules as $module)
             @if ($module === 'Universe Sync')
@@ -16,6 +23,18 @@
             @elseif ($module === 'Settings')
                 <a class="card card-link" href="{{ route('cryptospot.settings.index') }}">
                     <h2>{{ $module }}</h2>
+                    <div class="status">Open</div>
+                </a>
+            @elseif ($module === 'Candidate Watchlist')
+                <a class="card card-link" href="{{ route('cryptospot.watchlist.index') }}">
+                    <h2>Watchlist</h2>
+                    <p>Review active/refreshed candidates from selected scan results.</p>
+                    <div class="status">Open</div>
+                </a>
+            @elseif ($module === 'Trade Plans')
+                <a class="card card-link" href="{{ route('cryptospot.trade-plans.index') }}">
+                    <h2>Trade Plans</h2>
+                    <p>Review pending breakout/pullback plans with entry, TP, SL, and expiry.</p>
                     <div class="status">Open</div>
                 </a>
             @elseif ($module === 'Scan Results')
