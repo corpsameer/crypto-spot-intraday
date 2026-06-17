@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from cryptospot.db import execute, fetch_all, fetch_one
+from cryptospot.db import fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 
@@ -92,8 +92,9 @@ def classify_market_condition(btc_changes: dict, eth_changes: dict) -> str:
 
 
 class MarketContextEngine:
-    def run(self) -> dict:
+    def run(self, source: str = "manual", scan_run_id: int = None) -> dict:
         summary = {
+            "market_snapshot_id": None,
             "btc_symbol": None,
             "eth_symbol": None,
             "btc_price": None,
@@ -133,8 +134,9 @@ class MarketContextEngine:
             summary["market_condition"] = market_condition
 
             reason = self._classification_reason(btc_context["changes"], market_condition)
-            self._insert_snapshot(btc_symbol, eth_symbol, btc_context, eth_context, market_condition, reason)
-            summary["snapshot_inserted"] = True
+            market_snapshot_id = self._insert_snapshot(btc_symbol, eth_symbol, btc_context, eth_context, market_condition, reason, source, scan_run_id)
+            summary["market_snapshot_id"] = market_snapshot_id
+            summary["snapshot_inserted"] = bool(market_snapshot_id)
 
             missing_changes = self._missing_change_labels("BTC", btc_context) + self._missing_change_labels("ETH", eth_context)
             summary["errors"].extend(missing_changes)
@@ -246,16 +248,18 @@ class MarketContextEngine:
             f"24h={btc_changes.get('change_24h_percent')}"
         )
 
-    def _notes(self, btc_symbol: dict | None, eth_symbol: dict | None) -> str:
+    def _notes(self, btc_symbol: dict | None, eth_symbol: dict | None, scan_run_id: int = None) -> str:
         primary = btc_symbol.get("coindcx_symbol") if btc_symbol else "unresolved BTC"
         notes = [f"BTC/ETH candle-based market context one-shot run. Primary driver: {primary}."]
+        if scan_run_id is not None:
+            notes.append(f"BTC/ETH market context generated for scan_run_id {scan_run_id}.")
         if btc_symbol and btc_symbol.get("quote_asset") != "USDT":
             notes.append(f"BTC fallback used: {btc_symbol.get('coindcx_symbol')}.")
         if eth_symbol and eth_symbol.get("quote_asset") != "USDT":
             notes.append(f"ETH fallback used: {eth_symbol.get('coindcx_symbol')}.")
         return " ".join(notes)
 
-    def _insert_snapshot(self, btc_symbol, eth_symbol, btc_context, eth_context, market_condition, classification_reason):
+    def _insert_snapshot(self, btc_symbol, eth_symbol, btc_context, eth_context, market_condition, classification_reason, source: str = "manual", scan_run_id: int = None):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         btc_changes = btc_context["changes"]
         eth_changes = eth_context["changes"]
@@ -277,25 +281,37 @@ class MarketContextEngine:
                 "ETH": eth_changes,
             },
             "classification_reason": classification_reason,
+            "source": source,
+            "scan_run_id": scan_run_id,
         }
 
-        execute(
-            """
-            INSERT INTO market_snapshots
+        connection = get_connection()
+        cursor = None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO market_snapshots
                 (snapshot_time, btc_price, eth_price,
                  btc_change_5m_percent, btc_change_15m_percent, btc_change_1h_percent, btc_change_4h_percent, btc_change_24h_percent,
                  eth_change_5m_percent, eth_change_15m_percent, eth_change_1h_percent, eth_change_4h_percent, eth_change_24h_percent,
                  market_condition, notes, raw_payload, created_at, updated_at)
-            VALUES
-                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                now, btc_context["price"], eth_context["price"],
-                btc_changes["change_5m_percent"], btc_changes["change_15m_percent"], btc_changes["change_1h_percent"],
-                btc_changes["change_4h_percent"], btc_changes["change_24h_percent"],
-                eth_changes["change_5m_percent"], eth_changes["change_15m_percent"], eth_changes["change_1h_percent"],
-                eth_changes["change_4h_percent"], eth_changes["change_24h_percent"],
-                market_condition, self._notes(btc_symbol, eth_symbol),
-                json.dumps(raw_payload, separators=(",", ":"), default=json_default), now, now,
-            ),
-        )
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    now, btc_context["price"], eth_context["price"],
+                    btc_changes["change_5m_percent"], btc_changes["change_15m_percent"], btc_changes["change_1h_percent"],
+                    btc_changes["change_4h_percent"], btc_changes["change_24h_percent"],
+                    eth_changes["change_5m_percent"], eth_changes["change_15m_percent"], eth_changes["change_1h_percent"],
+                    eth_changes["change_4h_percent"], eth_changes["change_24h_percent"],
+                    market_condition, self._notes(btc_symbol, eth_symbol, scan_run_id),
+                    json.dumps(raw_payload, separators=(",", ":"), default=json_default), now, now,
+                ),
+            )
+            connection.commit()
+            return cursor.lastrowid
+        finally:
+            if cursor:
+                cursor.close()
+            connection.close()
