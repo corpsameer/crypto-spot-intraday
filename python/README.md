@@ -458,3 +458,24 @@ Run once from the Python folder:
 cd python
 python scripts/run_breakout_entry_simulator_once.py --limit 20
 ```
+
+## Pullback simulated entry
+
+The pullback entry simulator converts already-triggered pullback `trade_plans` into active `simulated_trades`. It loads only plans where `status = 'triggered'`, `entry_strategy = 'pullback'`, and `simulated_trade_id IS NULL`, then creates one simulation row per eligible plan.
+
+For each converted plan, the simulator:
+
+- Creates an active long `simulated_trades` row with `source = trade_plan` and `entry_strategy = pullback`.
+- Selects the simulated entry price from `latest_price`, then `entry_price`, then `trigger_price`.
+- Creates one `ENTRY_TRIGGERED` `trade_events` row.
+- Updates the source `trade_plans` row to `status = converted_to_trade` and links `simulated_trade_id`.
+- Writes a `pullback_entry_simulator` row to `system_health_logs`.
+
+This step handles pullback entries only. Breakout entries are handled by `BreakoutEntrySimulator`. It does not monitor active trades yet, does not log TP/SL events yet, does not call CoinDCX private APIs, does not use API keys, and does not place real trades.
+
+Run once from the Python folder:
+
+```bash
+cd python
+python scripts/run_pullback_entry_simulator_once.py --limit 20
+```
