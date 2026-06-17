@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DailyGainerLeaderboardController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SimulatedTradeController;
 use App\Http\Controllers\ScanResultController;
@@ -29,6 +30,7 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/watchlist', [WatchlistController::class, 'index'])->name('watchlist.index');
         Route::get('/trade-plans', [WatchlistController::class, 'tradePlans'])->name('trade-plans.index');
         Route::get('/simulated-trades', [SimulatedTradeController::class, 'index'])->name('simulated-trades.index');
+        Route::get('/daily-gainers', [DailyGainerLeaderboardController::class, 'index'])->name('daily-gainers.index');
         Route::get('/simulated-trades/{simulatedTrade}', [SimulatedTradeController::class, 'show'])->name('simulated-trades.show');
         Route::get('/scans/{scanRun}', [ScanResultController::class, 'show'])->name('scans.show');
         Route::post('/spot-symbols/sync', [SpotSymbolController::class, 'sync'])->name('spot-symbols.sync');

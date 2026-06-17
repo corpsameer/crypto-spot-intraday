@@ -197,3 +197,12 @@ Task 21 adds the database and Laravel model foundation for future spot-only simu
 - This foundation includes schema columns, model fillable/cast definitions, and relationships back to trade plans, scan runs, scan results, candidate watchlists, spot symbols, and scanner metrics.
 - No simulated trade creation, trigger monitoring, active trade monitoring, TP/SL processing, trailing-stop processing, or expiry-close logic is implemented yet.
 - No real trading exists, and the application does not use private CoinDCX APIs or API keys.
+
+## Daily gainer leaderboard
+
+Task 30 adds a manual/scheduled one-shot daily gainer leaderboard. It fetches CoinDCX spot ticker data once per run, stores the top actual 24h gainers for a date/quote filter, and records lightweight scan-match fields for later missed-gainer analysis. It does not run as a continuous all-coin scanner and does not fetch candles or orderbooks.
+
+```bash
+cd python
+python scripts/run_daily_gainer_leaderboard_once.py --quote USDT --limit 100
+```

@@ -24,6 +24,7 @@ class DashboardController extends Controller
             'Candidate Watchlist',
             'Trade Plans',
             'Simulated Trades',
+            'Daily Gainers',
             'Missed Gainers',
             'System Health',
             'Settings',
