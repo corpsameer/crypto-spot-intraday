@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class TradePlan extends Model
 {
@@ -47,5 +49,7 @@ class TradePlan extends Model
     public function scanResult(): BelongsTo { return $this->belongsTo(ScanResult::class); }
     public function candidateWatchlist(): BelongsTo { return $this->belongsTo(CandidateWatchlist::class); }
     public function spotSymbol(): BelongsTo { return $this->belongsTo(SpotSymbol::class); }
-    public function simulatedTrade(): BelongsTo { return $this->belongsTo(SimulatedTrade::class); }
+    public function simulatedTrade(): HasOne { return $this->hasOne(SimulatedTrade::class); }
+    public function linkedSimulatedTrade(): BelongsTo { return $this->belongsTo(SimulatedTrade::class, 'simulated_trade_id'); }
+    public function tradeEvents(): HasMany { return $this->hasMany(TradeEvent::class); }
 }

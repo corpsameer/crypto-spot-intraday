@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\CandidateWatchlist;
 use App\Models\ScanRun;
+use App\Models\SimulatedTrade;
+use App\Models\TradeEvent;
 use App\Models\TradePlan;
 use Illuminate\View\View;
 
@@ -37,6 +39,10 @@ class DashboardController extends Controller
             'pending_trade_plan_count' => TradePlan::query()->where('status', 'pending')->count(),
             'latest_top_plan' => TradePlan::query()->where('status', 'pending')->orderByDesc('score')->orderByDesc('updated_at')->first(['coindcx_symbol', 'score']),
             'expiring_soon_count' => TradePlan::query()->whereBetween('expires_at', [now(), now()->addHour()])->count(),
+            'active_simulated_trade_count' => SimulatedTrade::query()->whereIn('status', ['active', 'tp1_hit', 'tp2_hit', 'trailing_active'])->count(),
+            'open_simulated_trade_count' => SimulatedTrade::query()->whereIn('status', ['pending', 'active', 'tp1_hit', 'tp2_hit', 'trailing_active'])->count(),
+            'closed_simulated_trade_count' => SimulatedTrade::query()->whereIn('status', ['closed_tp1', 'closed_tp2', 'closed_sl', 'closed_trailing', 'expired', 'cancelled', 'error'])->count(),
+            'trade_event_count' => TradeEvent::query()->count(),
         ];
 
         return view('dashboard', compact('modules', 'latestScanRun', 'dashboardStats'));

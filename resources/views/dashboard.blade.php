@@ -11,6 +11,10 @@
         <article class="card metric-card"><span>Pending trade plans</span><strong>{{ $dashboardStats['pending_trade_plan_count'] }}</strong></article>
         <article class="card metric-card"><span>Latest top plan</span><strong>{{ $dashboardStats['latest_top_plan'] ? $dashboardStats['latest_top_plan']->coindcx_symbol . ' / ' . number_format((float) $dashboardStats['latest_top_plan']->score, 2) : '-' }}</strong></article>
         <article class="card metric-card"><span>Expiring soon</span><strong>{{ $dashboardStats['expiring_soon_count'] }}</strong></article>
+        <article class="card metric-card"><span>Active simulated trades</span><strong>{{ $dashboardStats['active_simulated_trade_count'] }}</strong></article>
+        <article class="card metric-card"><span>Open simulated trades</span><strong>{{ $dashboardStats['open_simulated_trade_count'] }}</strong></article>
+        <article class="card metric-card"><span>Closed simulated trades</span><strong>{{ $dashboardStats['closed_simulated_trade_count'] }}</strong></article>
+        <article class="card metric-card"><span>Trade events</span><strong>{{ $dashboardStats['trade_event_count'] }}</strong></article>
     </section>
 
     <section class="grid" aria-label="Future modules">
