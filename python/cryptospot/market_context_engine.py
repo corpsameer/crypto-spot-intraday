@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from cryptospot.candle_collector import CandleCollector, DEFAULT_TIMEFRAMES, INTERVAL_MAP, LOOKBACK_WINDOWS
+from cryptospot.coindcx_client import CoinDCXPublicClient
 from cryptospot.db import fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
@@ -13,6 +15,7 @@ TIMEFRAME_LIMITS = {
     "5m": 300,
     "15m": 300,
     "1h": 200,
+    "4h": 100,
 }
 
 logger = get_logger(__name__)
@@ -92,7 +95,7 @@ def classify_market_condition(btc_changes: dict, eth_changes: dict) -> str:
 
 
 class MarketContextEngine:
-    def run(self, source: str = "manual", scan_run_id: int = None) -> dict:
+    def run(self, source: str = "manual", scan_run_id: int = None, refresh_candles: bool = True) -> dict:
         summary = {
             "market_snapshot_id": None,
             "btc_symbol": None,
@@ -101,6 +104,14 @@ class MarketContextEngine:
             "eth_price": None,
             "market_condition": None,
             "snapshot_inserted": False,
+            "refresh_candles": bool(refresh_candles),
+            "context_candles": {
+                "symbols_processed": 0,
+                "api_calls": 0,
+                "candles_received": 0,
+                "candles_inserted_or_updated": 0,
+                "errors": [],
+            },
             "errors": [],
         }
 
@@ -111,6 +122,11 @@ class MarketContextEngine:
                 summary["errors"].append("BTC active spot symbol not found for USDT or INR quote")
             if not eth_symbol:
                 summary["errors"].append("ETH active spot symbol not found for USDT or INR quote")
+
+            if refresh_candles:
+                summary["context_candles"] = self._refresh_context_candles([btc_symbol, eth_symbol])
+                if summary["context_candles"].get("errors"):
+                    summary["errors"].extend([f"Context candle refresh: {error}" for error in summary["context_candles"].get("errors", [])])
 
             btc_context = self._build_asset_context("BTC", btc_symbol, summary)
             eth_context = self._build_asset_context("ETH", eth_symbol, summary)
@@ -134,7 +150,7 @@ class MarketContextEngine:
             summary["market_condition"] = market_condition
 
             reason = self._classification_reason(btc_context["changes"], market_condition)
-            market_snapshot_id = self._insert_snapshot(btc_symbol, eth_symbol, btc_context, eth_context, market_condition, reason, source, scan_run_id)
+            market_snapshot_id = self._insert_snapshot(btc_symbol, eth_symbol, btc_context, eth_context, market_condition, reason, source, scan_run_id, summary.get("context_candles"))
             summary["market_snapshot_id"] = market_snapshot_id
             summary["snapshot_inserted"] = bool(market_snapshot_id)
 
@@ -144,7 +160,10 @@ class MarketContextEngine:
             status = "warning" if summary["errors"] else "ok"
             message = (
                 f"Market context completed: condition={market_condition}, "
-                f"btc_resolved={bool(btc_symbol)}, eth_resolved={bool(eth_symbol)}, warnings={len(summary['errors'])}"
+                f"btc_resolved={bool(btc_symbol)}, eth_resolved={bool(eth_symbol)}, "
+                f"context_api_calls={summary['context_candles'].get('api_calls', 0)}, "
+                f"context_candles_received={summary['context_candles'].get('candles_received', 0)}, "
+                f"warnings={len(summary['errors'])}"
             )
             write_health_log(SERVICE_NAME, status, message, summary)
             return summary
@@ -169,6 +188,51 @@ class MarketContextEngine:
             if row:
                 return row
         return None
+
+
+    def _refresh_context_candles(self, symbols: list[dict | None]) -> dict:
+        stats = {
+            "symbols_processed": 0,
+            "api_calls": 0,
+            "candles_received": 0,
+            "candles_inserted_or_updated": 0,
+            "errors": [],
+        }
+        active_symbols = [symbol for symbol in symbols if symbol]
+        if not active_symbols:
+            stats["errors"].append("No BTC/ETH context symbols resolved for candle refresh")
+            return stats
+
+        client = CoinDCXPublicClient()
+        collector = CandleCollector(client=client)
+        timeframes = [timeframe for timeframe in DEFAULT_TIMEFRAMES if timeframe in INTERVAL_MAP and timeframe in LOOKBACK_WINDOWS]
+
+        for symbol in active_symbols:
+            pair = symbol.get("api_pair")
+            coindcx_symbol = symbol.get("coindcx_symbol")
+            if not pair:
+                stats["errors"].append(f"{coindcx_symbol}: api_pair missing")
+                continue
+            stats["symbols_processed"] += 1
+            for timeframe in timeframes:
+                try:
+                    start_time, end_time = self._context_time_window_ms(timeframe)
+                    response = client.candles(pair=pair, interval=INTERVAL_MAP[timeframe], start_time=start_time, end_time=end_time)
+                    stats["api_calls"] += 1
+                    candle_rows = collector._coerce_candle_rows(response)
+                    stats["candles_received"] += len(candle_rows)
+                    params = collector._build_upsert_params(symbol, timeframe, candle_rows)
+                    if params:
+                        stats["candles_inserted_or_updated"] += collector._upsert_candles(params)
+                except Exception as exc:
+                    stats["errors"].append(f"{coindcx_symbol} {timeframe}: {exc}")
+                    logger.warning("Context candle refresh failed for %s %s: %s", coindcx_symbol, timeframe, exc)
+        return stats
+
+    def _context_time_window_ms(self, timeframe: str) -> tuple[int, int]:
+        end = datetime.utcnow()
+        start = end - LOOKBACK_WINDOWS.get(timeframe, timedelta(hours=24))
+        return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
     def _build_asset_context(self, asset: str, symbol: dict | None, summary: dict) -> dict:
         context = {
@@ -259,7 +323,7 @@ class MarketContextEngine:
             notes.append(f"ETH fallback used: {eth_symbol.get('coindcx_symbol')}.")
         return " ".join(notes)
 
-    def _insert_snapshot(self, btc_symbol, eth_symbol, btc_context, eth_context, market_condition, classification_reason, source: str = "manual", scan_run_id: int = None):
+    def _insert_snapshot(self, btc_symbol, eth_symbol, btc_context, eth_context, market_condition, classification_reason, source: str = "manual", scan_run_id: int = None, context_candles: dict = None):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         btc_changes = btc_context["changes"]
         eth_changes = eth_context["changes"]
@@ -283,6 +347,7 @@ class MarketContextEngine:
             "classification_reason": classification_reason,
             "source": source,
             "scan_run_id": scan_run_id,
+            "context_candles": context_candles or {},
         }
 
         connection = get_connection()

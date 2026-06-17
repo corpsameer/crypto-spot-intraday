@@ -397,3 +397,13 @@ Run a manual scan with trade plan generation:
 cd python
 python scripts/run_manual_scan_once.py --name "Trade Plan Generator Test" --quote USDT
 ```
+
+## Task 19.1 fixes
+
+Task 19.1 keeps the MVP workflow scan-based and fixes two scan-run visibility and freshness issues:
+
+- Manual scan CLI output now includes the `trade_plans` summary returned by the scan runner.
+- `scan_runs.raw_payload` includes the `trade_plans` summary, and `scan_runs.trade_plans_created_count` is based on the number of selected scan results linked to a primary trade plan rather than the total number of breakout plus pullback rows.
+- Market context refreshes fresh BTC/ETH candles immediately before calculating and inserting each scan market snapshot.
+- BTC/ETH context refresh is intentionally limited to the resolved BTC and ETH context symbols only (`BTCUSDT`/`ETHUSDT`, with `BTCINR`/`ETHINR` fallback when USDT is unavailable); it does not fetch candles for all coins.
+- No real trading, private CoinDCX API usage, API keys, trade-trigger monitoring, simulated trade creation, active trade monitoring, TP/SL event logging, or continuous all-market scanning is added by this fix.

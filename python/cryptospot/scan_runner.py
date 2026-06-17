@@ -217,7 +217,7 @@ class ScanRunner:
             summary["scan_run_id"] = self._create_scan_run(run_uuid, summary["scan_name"], resolved_quote_filter, settings_snapshot)
 
             try:
-                summary["market_context"] = MarketContextEngine().run(source="scan_runner", scan_run_id=summary["scan_run_id"])
+                summary["market_context"] = MarketContextEngine().run(source="scan_runner", scan_run_id=summary["scan_run_id"], refresh_candles=True)
                 summary["market_context"]["enabled"] = True
                 self._merge_scan_run_raw_payload(summary["scan_run_id"], {"market_context": summary["market_context"]})
                 if summary["market_context"].get("errors"):
@@ -232,6 +232,14 @@ class ScanRunner:
                     "eth_price": None,
                     "market_condition": None,
                     "snapshot_inserted": False,
+                    "refresh_candles": True,
+                    "context_candles": {
+                        "symbols_processed": 0,
+                        "api_calls": 0,
+                        "candles_received": 0,
+                        "candles_inserted_or_updated": 0,
+                        "errors": [],
+                    },
                     "errors": [str(exc)],
                 }
                 summary["errors"].append(f"Market context: {exc}")
