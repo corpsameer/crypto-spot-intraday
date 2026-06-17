@@ -512,3 +512,35 @@ python scripts/run_active_trade_monitor_loop.py --interval 15 --limit 50
 ```
 
 The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. The loop monitors only active simulated trades and is not an all-coin scanner. Supervisor setup is intentionally not included in this task.
+
+## TP1/TP2/SL event logging
+
+The trade event monitor is the Task 26 simulation event logger for open `simulated_trades`. It uses `latest_price` that has already been stored by the `ActiveTradeMonitor`; it does not fetch CoinDCX prices itself and does not scan all coins.
+
+For each open long simulated trade, it checks the stored prices and logs idempotent trade events:
+
+- `TP1_HIT` when `latest_price >= tp1_price`.
+- `TP2_HIT` when `latest_price >= tp2_price`.
+- `SL_HIT` when `latest_price <= sl_price`.
+
+`TP1_HIT` and `TP2_HIT` are milestones only. They update `tp1_hit_at` / `tp2_hit_at` and keep the simulated trade open. `SL_HIT` closes the simulated trade with `status = closed_sl`, `closed_at`, `close_price`, `close_reason = sl`, and `final_pnl_percent`.
+
+The monitor checks for an existing `(simulated_trade_id, event_type)` before inserting, so repeated runs do not duplicate `TP1_HIT`, `TP2_HIT`, or `SL_HIT` events. If a matching event already exists, it repairs the corresponding simulated trade timestamp/status where needed.
+
+Trailing after TP2 is intentionally not implemented here and will come in a later task. Expiry/final close is also not implemented here. This monitor is simulation-only: it does not place real trades, does not use private CoinDCX APIs, does not require API keys, and does not add real trading logic.
+
+Recommended one-shot flow from the project root:
+
+```bash
+cd python
+python scripts/run_active_trade_monitor_once.py --limit 50
+python scripts/run_trade_event_monitor_once.py --limit 50
+```
+
+Run a loop test from inside the `python` folder:
+
+```bash
+python scripts/run_trade_event_monitor_loop.py --interval 15 --limit 50
+```
+
+The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades and should be run after or alongside the active trade price monitor in the MVP flow.
