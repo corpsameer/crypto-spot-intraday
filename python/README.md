@@ -437,3 +437,24 @@ python scripts/run_trade_plan_trigger_monitor_loop.py --interval 30 --limit 50
 ```
 
 The loop uses `monitor.trade_plan_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 30 seconds if the setting is missing. Supervisor setup is intentionally not included in this task.
+
+## Breakout simulated entry
+
+The breakout entry simulator converts already-triggered breakout `trade_plans` into active `simulated_trades`. It loads only plans where `status = 'triggered'`, `entry_strategy = 'breakout'`, and `simulated_trade_id IS NULL`, then creates one simulation row per eligible plan.
+
+For each converted plan, the simulator:
+
+- Creates an active long `simulated_trades` row with `source = trade_plan` and `entry_strategy = breakout`.
+- Selects the simulated entry price from `latest_price`, then `entry_price`, then `trigger_price`.
+- Creates one `ENTRY_TRIGGERED` `trade_events` row.
+- Updates the source `trade_plans` row to `status = converted_to_trade` and links `simulated_trade_id`.
+- Writes a `breakout_entry_simulator` row to `system_health_logs`.
+
+This step is simulation-only. It does not handle pullback entries yet, does not monitor active trades, does not log TP/SL events, does not call CoinDCX private APIs, does not use API keys, and does not place real trades.
+
+Run once from the Python folder:
+
+```bash
+cd python
+python scripts/run_breakout_entry_simulator_once.py --limit 20
+```
