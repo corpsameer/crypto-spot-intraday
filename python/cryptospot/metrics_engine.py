@@ -322,13 +322,20 @@ class MetricsEngine:
 
     def _update_scan_run_metrics_summary(self, scan_run_id: int, summary: dict):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        existing = fetch_one("SELECT raw_payload FROM scan_runs WHERE id = %s LIMIT 1", (scan_run_id,)) or {}
+        raw_payload = {}
+        try:
+            raw_payload = json.loads(existing.get("raw_payload") or "{}")
+        except (TypeError, ValueError):
+            raw_payload = {}
+        raw_payload["metrics"] = summary
         return execute(
             """
             UPDATE scan_runs
             SET metrics_calculated_count = %s, raw_payload = %s, updated_at = %s
             WHERE id = %s
             """,
-            (summary.get("scan_results_updated", 0), json.dumps({"metrics": summary}, separators=(",", ":"), default=json_default), now, scan_run_id),
+            (summary.get("scan_results_updated", 0), json.dumps(raw_payload, separators=(",", ":"), default=json_default), now, scan_run_id),
         )
 
     def _first_available(self, *values):
