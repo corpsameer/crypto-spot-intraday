@@ -312,3 +312,21 @@ The candidate liquidity refresh enriches the matching `scan_results` rows with f
 The scan-based metrics step prefers scan-fresh liquidity from `scan_results` and the same-scan liquidity metric rows where available. If scan-fresh liquidity is missing, it falls back to the latest existing orderbook metrics and then ticker spread behavior.
 
 This Task 11.1 workflow still does not calculate `final_score` unless a later scoring task already exists and is already wired into the scan runner. It does not create watchlist candidates, create trade plans, create simulated trades, place trades, use private CoinDCX APIs, require API keys, or run continuously.
+
+## Manual scan with prefilter, candidate liquidity, candles, metrics, and scoring
+
+Run a scheduled/manual MVP scan with prefiltering, candidate-only orderbook liquidity, scan-based candle collection, scan-based metrics, and scan-based scoring:
+
+```bash
+python scripts/run_manual_scan_once.py --name "Scan Scoring Test" --quote USDT --limit 50
+```
+
+The scan runner now scores only `scan_results` rows in the current `scan_run` that reached `status = metrics_calculated` and have a linked `scanner_metric_id`. It does not score every active coin outside the manual/scheduled scan workflow.
+
+The scan-based scoring step uses stored momentum, volume spike, breakout/near-high, overextension risk, scan-fresh liquidity/spread, relative strength versus BTC, and per-scan market context metrics. It reads per-scan market context from `scan_runs.raw_payload.market_context.market_condition` when available, then falls back to the latest `market_snapshots` row, and never calls CoinDCX directly.
+
+For each scored row, the scoring engine updates `scan_results.final_score`, `scan_results.score_label`, `scan_results.score_breakdown`, `scan_results.risk_penalty`, and `scan_results.score_passed`. It also updates the linked `scanner_metrics` row with `final_score`, `score_label`, `risk_penalty`, `passes_watchlist`, and `passes_strong`.
+
+The scoring summary updates `scan_runs.scored_count`, `scan_runs.top_score`, and `scan_runs.top_symbol`, and writes a `scan_scoring_engine` health log entry.
+
+This Task 12 workflow still does not create watchlist candidates, does not create trade plans, does not create simulated trades, does not place trades, does not use private CoinDCX APIs, does not require API keys, and does not run continuously.

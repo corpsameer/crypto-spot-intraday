@@ -10,6 +10,7 @@ from cryptospot.market_context_engine import MarketContextEngine
 from cryptospot.metrics_engine import MetricsEngine
 from cryptospot.prefilter_engine import PrefilterEngine
 from cryptospot.scan_liquidity_collector import ScanLiquidityCollector
+from cryptospot.scoring_engine import ScoringEngine
 from cryptospot.settings import get_settings_by_group
 
 SERVICE_NAME = "scan_runner"
@@ -137,6 +138,19 @@ class ScanRunner:
                 "skipped": 0,
                 "errors": [],
             },
+            "scoring": {
+                "eligible_scan_results": 0,
+                "symbols_processed": 0,
+                "scored": 0,
+                "watchlist_passed": 0,
+                "strong_passed": 0,
+                "top_symbol": None,
+                "top_score": None,
+                "scan_results_updated": 0,
+                "scanner_metrics_updated": 0,
+                "skipped": 0,
+                "errors": [],
+            },
             "duration_seconds": 0,
             "skipped": 0,
             "errors": [],
@@ -178,6 +192,7 @@ class ScanRunner:
             try:
                 summary["market_context"] = MarketContextEngine().run(source="scan_runner", scan_run_id=summary["scan_run_id"])
                 summary["market_context"]["enabled"] = True
+                self._merge_scan_run_raw_payload(summary["scan_run_id"], {"market_context": summary["market_context"]})
                 if summary["market_context"].get("errors"):
                     summary["errors"].extend([f"Market context: {error}" for error in summary["market_context"].get("errors", [])])
             except Exception as exc:
@@ -269,6 +284,23 @@ class ScanRunner:
             }
             if metrics_summary.get("errors"):
                 summary["errors"].extend([f"Metrics: {error}" for error in metrics_summary.get("errors", [])])
+
+            scoring_summary = ScoringEngine().run_for_scan_run(summary["scan_run_id"])
+            summary["scoring"] = {
+                "eligible_scan_results": scoring_summary.get("eligible_scan_results", 0),
+                "symbols_processed": scoring_summary.get("symbols_processed", 0),
+                "scored": scoring_summary.get("scored", 0),
+                "watchlist_passed": scoring_summary.get("watchlist_passed", 0),
+                "strong_passed": scoring_summary.get("strong_passed", 0),
+                "top_symbol": scoring_summary.get("top_symbol"),
+                "top_score": scoring_summary.get("top_score"),
+                "scan_results_updated": scoring_summary.get("scan_results_updated", 0),
+                "scanner_metrics_updated": scoring_summary.get("scanner_metrics_updated", 0),
+                "skipped": scoring_summary.get("skipped", 0),
+                "errors": scoring_summary.get("errors", []),
+            }
+            if scoring_summary.get("errors"):
+                summary["errors"].extend([f"Scoring: {error}" for error in scoring_summary.get("errors", [])])
 
             summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
             self._mark_scan_completed(summary)
@@ -385,6 +417,19 @@ class ScanRunner:
             ),
         )
 
+    def _merge_scan_run_raw_payload(self, scan_run_id, values: dict):
+        row = fetch_one("SELECT raw_payload FROM scan_runs WHERE id = %s LIMIT 1", (scan_run_id,)) or {}
+        try:
+            raw_payload = json.loads(row.get("raw_payload") or "{}")
+        except (TypeError, ValueError):
+            raw_payload = {}
+        raw_payload.update(values or {})
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return execute(
+            "UPDATE scan_runs SET raw_payload = %s, updated_at = %s WHERE id = %s",
+            (json.dumps(raw_payload, separators=(",", ":"), default=str), now, scan_run_id),
+        )
+
     def _mark_scan_completed(self, summary):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return execute(
@@ -393,7 +438,8 @@ class ScanRunner:
             SET status = 'completed', completed_at = %s, duration_seconds = %s,
                 total_active_symbols = %s, ticker_rows_fetched = %s,
                 prefilter_passed_count = %s, candles_fetched_count = %s, metrics_calculated_count = %s,
-                scored_count = 0, watchlist_created_count = 0, trade_plans_created_count = 0,
+                scored_count = %s, top_score = %s, top_symbol = %s,
+                watchlist_created_count = 0, trade_plans_created_count = 0,
                 raw_payload = %s, updated_at = %s
             WHERE id = %s
             """,
@@ -402,6 +448,9 @@ class ScanRunner:
                 summary.get("prefilter", {}).get("passed", 0),
                 self._count_candle_success_results(summary["scan_run_id"]),
                 summary.get("metrics", {}).get("scan_results_updated", 0),
+                summary.get("scoring", {}).get("scored", 0),
+                summary.get("scoring", {}).get("top_score"),
+                summary.get("scoring", {}).get("top_symbol"),
                 json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"],
             ),
         )
@@ -426,6 +475,7 @@ class ScanRunner:
               AND (
                   (status = 'candles_fetched' AND stage = 'candles')
                   OR (status = 'metrics_calculated' AND stage = 'metrics')
+                  OR (status = 'scored' AND stage = 'scoring')
               )
             """,
             (scan_run_id,),
