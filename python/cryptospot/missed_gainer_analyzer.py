@@ -53,7 +53,10 @@ class MissedGainerAnalyzer:
                     continue
                 try:
                     analyzed = self._analyze_row(row, resolved_date, quote_filter, min_change)
-                    affected = execute(self._upsert_sql(), self._upsert_params(analyzed))
+                    try:
+                        affected = execute(self._upsert_sql(), self._upsert_params(analyzed))
+                    except Exception as exc:
+                        raise RuntimeError(f"upsert_missed_gainer: {exc}") from exc
                     summary["rows_analyzed"] += 1
                     summary["rows_upserted"] += 1 if affected >= 1 else 0
                     miss_type = analyzed.get("miss_type")
@@ -62,7 +65,7 @@ class MissedGainerAnalyzer:
                     if analyzed.get("simulated_trade_created"):
                         summary["simulated_trade_created"] += 1
                 except Exception as exc:
-                    summary["errors"].append(f"{symbol}: {exc}")
+                    summary["errors"].append(f"{symbol} {exc}")
                     continue
 
             status = "warning" if summary["errors"] else "ok"
@@ -75,6 +78,12 @@ class MissedGainerAnalyzer:
             except Exception:
                 pass
             raise
+
+    def _run_lookup(self, step: str, callback):
+        try:
+            return callback()
+        except Exception as exc:
+            raise RuntimeError(f"{step}: {exc}") from exc
 
     def _load_leaderboard_rows(self, analysis_date: str, quote_filter: str, min_change: float, limit: int) -> list[dict]:
         return fetch_all(
@@ -91,11 +100,11 @@ class MissedGainerAnalyzer:
         )
 
     def _analyze_row(self, leaderboard: dict, analysis_date: str, quote_filter: str, min_change: float) -> dict:
-        scan_result = self._best_scan_result(leaderboard, analysis_date)
-        watchlist = self._best_watchlist(leaderboard, scan_result, analysis_date)
-        trade_plan = self._best_trade_plan(leaderboard, scan_result, watchlist, analysis_date)
-        simulated_trade = self._best_simulated_trade(leaderboard, scan_result, trade_plan, analysis_date)
-        event_flags = self._trade_event_flags(simulated_trade.get("id")) if simulated_trade else {}
+        scan_result = self._run_lookup("find_best_scan_result", lambda: self._best_scan_result(leaderboard, analysis_date))
+        watchlist = self._run_lookup("find_candidate_watchlist", lambda: self._best_watchlist(leaderboard, scan_result, analysis_date))
+        trade_plan = self._run_lookup("find_trade_plan", lambda: self._best_trade_plan(leaderboard, scan_result, watchlist, analysis_date))
+        simulated_trade = self._run_lookup("find_simulated_trade", lambda: self._best_simulated_trade(leaderboard, scan_result, trade_plan, analysis_date))
+        event_flags = self._run_lookup("find_trade_events", lambda: self._trade_event_flags(simulated_trade.get("id"))) if simulated_trade else {}
 
         actual_change = as_float(leaderboard.get("change_24h_percent"), 0.0) or 0.0
         matched = bool(scan_result)
@@ -297,7 +306,7 @@ class MissedGainerAnalyzer:
     def _upsert_params(self, row: dict) -> tuple:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         columns = self._upsert_columns()
-        return tuple(row.get(column) for column in columns) + (now, now)
+        return tuple(row.get(column) for column in columns) + (now, now, now)
 
     def _upsert_columns(self) -> list[str]:
         return [
