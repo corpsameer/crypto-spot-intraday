@@ -584,3 +584,37 @@ python scripts/run_trailing_monitor_loop.py --interval 15 --limit 50
 ```
 
 The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades and should run after the active trade price monitor and TP1/TP2/SL event monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
+
+## Expiry/final close logic
+
+The trade expiry monitor closes only still-open `simulated_trades` rows whose `expires_at` time has passed. It loads rows with `status IN ('active', 'tp1_hit', 'tp2_hit', 'trailing_active')`, `closed_at IS NULL`, and `expires_at <= NOW()`. It does not monitor all coins, fetch prices, create simulated trades, place real trades, use private CoinDCX APIs, or require API keys.
+
+For each expired open simulated trade, the monitor:
+
+- Uses `latest_price` as the close price when it is available and greater than zero.
+- Falls back to `entry_price` when `latest_price` is missing or invalid.
+- Calculates `final_pnl_percent` as `((close_price - entry_price) / entry_price) * 100` for long simulated trades.
+- Creates one idempotent `EXPIRED` `trade_events` row per simulated trade.
+- Updates the simulated trade with `status = expired`, `closed_at`, `close_price`, `close_reason = expiry`, `final_pnl_percent`, and matching `current_pnl_percent`.
+- Stores the latest expiry-monitor snapshot in `raw_payload.expiry_monitor`.
+- Writes a `trade_expiry_monitor` health log entry to `system_health_logs`.
+
+The monitor checks for an existing `EXPIRED` event before inserting, so repeated runs do not duplicate expiry events. Already expired or otherwise closed trades are not loaded again.
+
+Recommended one-shot final-close flow from the project root:
+
+```bash
+cd python
+python scripts/run_active_trade_monitor_once.py --limit 50
+python scripts/run_trade_event_monitor_once.py --limit 50
+python scripts/run_trailing_monitor_once.py --limit 50
+python scripts/run_trade_expiry_monitor_once.py --limit 50
+```
+
+Run a loop test from inside the `python` folder:
+
+```bash
+python scripts/run_trade_expiry_monitor_loop.py --interval 15 --limit 50
+```
+
+The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades whose expiry time has passed and should run after the active trade price monitor, TP1/TP2/SL event monitor, and trailing monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
