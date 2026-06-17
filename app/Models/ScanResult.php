@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ScanResult extends Model
 {
@@ -58,4 +60,6 @@ class ScanResult extends Model
     public function scannerMetric(): BelongsTo { return $this->belongsTo(ScannerMetric::class); }
     public function candidateWatchlist(): BelongsTo { return $this->belongsTo(CandidateWatchlist::class); }
     public function tradePlan(): BelongsTo { return $this->belongsTo(TradePlan::class); }
+    public function simulatedTrade(): HasOne { return $this->hasOne(SimulatedTrade::class); }
+    public function tradeEvents(): HasMany { return $this->hasMany(TradeEvent::class); }
 }

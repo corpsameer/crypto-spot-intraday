@@ -52,6 +52,7 @@ class SpotSymbol extends Model
     public function scanResults(): HasMany { return $this->hasMany(ScanResult::class); }
     public function tradePlans(): HasMany { return $this->hasMany(TradePlan::class); }
     public function simulatedTrades(): HasMany { return $this->hasMany(SimulatedTrade::class); }
+    public function tradeEvents(): HasMany { return $this->hasMany(TradeEvent::class); }
     public function missedGainers(): HasMany { return $this->hasMany(MissedGainer::class); }
 
 }

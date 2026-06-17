@@ -187,3 +187,13 @@ python scripts/test_scan_settings.py
 
 Task 10.2 is settings-only. It does not add a scan runner, prefilter engine, scoring, candidate creation, trade-plan creation, private CoinDCX APIs, API keys, or real trading.
 
+
+## Simulated trade foundation
+
+Task 21 adds the database and Laravel model foundation for future spot-only simulated trading.
+
+- The `simulated_trades` table stores one simulated trade after a pending trade plan is triggered in a later task.
+- The `trade_events` table stores atomic simulation events such as entry triggered, TP1/TP2 hit, SL hit, trailing updates, expiry, cancellation, close, error, and metric updates.
+- This foundation includes schema columns, model fillable/cast definitions, and relationships back to trade plans, scan runs, scan results, candidate watchlists, spot symbols, and scanner metrics.
+- No simulated trade creation, trigger monitoring, active trade monitoring, TP/SL processing, trailing-stop processing, or expiry-close logic is implemented yet.
+- No real trading exists, and the application does not use private CoinDCX APIs or API keys.
