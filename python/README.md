@@ -479,3 +479,36 @@ Run once from the Python folder:
 cd python
 python scripts/run_pullback_entry_simulator_once.py --limit 20
 ```
+
+## Active simulated trade monitor
+
+The active simulated trade monitor is the lightweight runtime monitor for open `simulated_trades` only. It loads non-closed trades with open statuses (`active`, `tp1_hit`, `tp2_hit`, and `trailing_active`), fetches the public CoinDCX ticker once per cycle, matches only those trade symbols, and updates runtime price and P&L fields.
+
+For each matched active trade, it updates:
+
+- `latest_price`
+- `highest_price`
+- `lowest_price`
+- `current_pnl_percent`
+- `max_gain_percent`
+- `max_drawdown_percent`
+- `raw_payload.active_trade_monitor` with the latest monitor snapshot
+
+The P&L calculation is long-only for the spot MVP: `current_pnl_percent = ((latest_price - entry_price) / entry_price) * 100`. Highest/lowest prices are carried forward from prior monitor cycles, while max gain and max drawdown are recalculated from the entry price.
+
+This monitor does **not** create TP/SL events yet, does **not** set TP/SL hit timestamps, does **not** close trades, does **not** implement trailing logic, does **not** place real trades, does **not** use private CoinDCX APIs or API keys, and does **not** scan all coins. Expiry and TP/SL condition flags may be recorded in `raw_payload.active_trade_monitor` as read-only awareness only; later tasks will handle event logging and trade closing.
+
+Run a one-shot check from inside the `python` folder:
+
+```bash
+cd python
+python scripts/run_active_trade_monitor_once.py --limit 50
+```
+
+Run a loop test from inside the `python` folder:
+
+```bash
+python scripts/run_active_trade_monitor_loop.py --interval 15 --limit 50
+```
+
+The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. The loop monitors only active simulated trades and is not an all-coin scanner. Supervisor setup is intentionally not included in this task.
