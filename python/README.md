@@ -330,3 +330,38 @@ For each scored row, the scoring engine updates `scan_results.final_score`, `sca
 The scoring summary updates `scan_runs.scored_count`, `scan_runs.top_score`, and `scan_runs.top_symbol`, and writes a `scan_scoring_engine` health log entry.
 
 This Task 12 workflow still does not create watchlist candidates, does not create trade plans, does not create simulated trades, does not place trades, does not use private CoinDCX APIs, does not require API keys, and does not run continuously.
+
+## Top-N fallback candidate selection
+
+Neutral or weak market scans can legitimately produce zero rows above the configured watchlist score threshold. Task 12.1 adds a scan-scoped top-N fallback selection step so the system can still mark the best available scored rows for later candidate creation without pretending they are high-confidence signals.
+
+After scoring, the scanner marks rows in `scan_results` using these fields:
+
+- `selected_for_watchlist`: `1` when a scored row should be carried forward by the next candidate-creation task.
+- `selection_type`: `threshold`, `fallback`, or `none`.
+- `selection_rank`: rank among selected rows, ordered by `final_score` descending.
+- `selection_reason`: human-readable explanation for threshold or fallback selection.
+
+Selection rules:
+
+1. Rows with `final_score >= scanner.watchlist_score_threshold` are selected as `selection_type = threshold`.
+2. If fewer than `scanner.min_required_candidates` pass the threshold and `scanner.enable_fallback_candidates` is enabled, the scanner adds the top scored rows with `final_score >= scanner.min_fallback_candidate_score`.
+3. Fallback rows keep their normal score label. For example, a fallback row below the watchlist threshold remains `score_label = weak` while `selection_type = fallback` and `selected_for_watchlist = 1`.
+4. Selection never exceeds `scan.max_final_candidates`.
+5. Candidate creation in the next task should read `selected_for_watchlist = 1` from `scan_results`.
+
+This step does **not** create `candidate_watchlists` rows, `trade_plans`, simulated trades, private CoinDCX API calls, API keys, or real trading logic.
+
+Run the migration and refresh settings before testing:
+
+```bash
+php artisan migrate
+php artisan db:seed --class=AppSettingSeeder
+```
+
+Then run a manual scan:
+
+```bash
+cd python
+python scripts/run_manual_scan_once.py --name "Fallback Selection Test" --quote USDT
+```
