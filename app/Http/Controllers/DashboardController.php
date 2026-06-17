@@ -43,6 +43,8 @@ class DashboardController extends Controller
             'open_simulated_trade_count' => SimulatedTrade::query()->whereIn('status', ['pending', 'active', 'tp1_hit', 'tp2_hit', 'trailing_active'])->count(),
             'closed_simulated_trade_count' => SimulatedTrade::query()->whereIn('status', ['closed_tp1', 'closed_tp2', 'closed_sl', 'closed_trailing', 'expired', 'cancelled', 'error'])->count(),
             'trade_event_count' => TradeEvent::query()->count(),
+            'open_unrealized_pnl' => (float) SimulatedTrade::query()->whereIn('status', ['pending', 'active', 'tp1_hit', 'tp2_hit', 'trailing_active'])->sum('current_pnl_percent'),
+            'latest_trade_event' => TradeEvent::query()->orderByDesc('event_time')->orderByDesc('id')->first(['coindcx_symbol', 'event_type', 'event_time']),
         ];
 
         return view('dashboard', compact('modules', 'latestScanRun', 'dashboardStats'));

@@ -15,6 +15,8 @@
         <article class="card metric-card"><span>Open simulated trades</span><strong>{{ $dashboardStats['open_simulated_trade_count'] }}</strong></article>
         <article class="card metric-card"><span>Closed simulated trades</span><strong>{{ $dashboardStats['closed_simulated_trade_count'] }}</strong></article>
         <article class="card metric-card"><span>Trade events</span><strong>{{ $dashboardStats['trade_event_count'] }}</strong></article>
+        <article class="card metric-card"><span>Open unrealized P&amp;L</span><strong>{{ number_format((float) $dashboardStats['open_unrealized_pnl'], 2) }}%</strong></article>
+        <article class="card metric-card"><span>Latest trade event</span><strong>{{ $dashboardStats['latest_trade_event'] ? $dashboardStats['latest_trade_event']->coindcx_symbol . ' / ' . $dashboardStats['latest_trade_event']->event_type . ' / ' . optional($dashboardStats['latest_trade_event']->event_time)->format('Y-m-d H:i') : '-' }}</strong></article>
     </section>
 
     <section class="grid" aria-label="Future modules">
@@ -33,6 +35,12 @@
                 <a class="card card-link" href="{{ route('cryptospot.watchlist.index') }}">
                     <h2>Watchlist</h2>
                     <p>Review active/refreshed candidates from selected scan results.</p>
+                    <div class="status">Open</div>
+                </a>
+            @elseif ($module === 'Simulated Trades')
+                <a class="card card-link" href="{{ route('cryptospot.simulated-trades.index') }}">
+                    <h2>Simulated Trades</h2>
+                    <p>Review open/closed simulated trades, P&amp;L, TP/SL events, and raw payloads.</p>
                     <div class="status">Open</div>
                 </a>
             @elseif ($module === 'Trade Plans')
