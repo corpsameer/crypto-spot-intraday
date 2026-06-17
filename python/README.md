@@ -527,7 +527,7 @@ For each open long simulated trade, it checks the stored prices and logs idempot
 
 The monitor checks for an existing `(simulated_trade_id, event_type)` before inserting, so repeated runs do not duplicate `TP1_HIT`, `TP2_HIT`, or `SL_HIT` events. If a matching event already exists, it repairs the corresponding simulated trade timestamp/status where needed.
 
-Trailing after TP2 is intentionally not implemented here and will come in a later task. Expiry/final close is also not implemented here. This monitor is simulation-only: it does not place real trades, does not use private CoinDCX APIs, does not require API keys, and does not add real trading logic.
+Trailing after TP2 is handled by the separate `TrailingMonitor`. Expiry/final close is not implemented here. This monitor is simulation-only: it does not place real trades, does not use private CoinDCX APIs, does not require API keys, and does not add real trading logic.
 
 Recommended one-shot flow from the project root:
 
@@ -544,3 +544,43 @@ python scripts/run_trade_event_monitor_loop.py --interval 15 --limit 50
 ```
 
 The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades and should be run after or alongside the active trade price monitor in the MVP flow.
+
+## Trailing after TP2
+
+The trailing monitor activates trailing stops for open simulated trades only after TP2 has been hit. It uses the `latest_price`, `highest_price`, `max_gain_percent`, and `tp2_hit_at` values already stored on `simulated_trades`; it does not fetch market prices, does not scan all coins, and does not place real trades.
+
+After TP2, the monitor:
+
+- Sets `trailing_active = 1`, `status = trailing_active`, and `trailing_started_at` when trailing starts.
+- Creates one idempotent `TRAILING_STARTED` event per simulated trade.
+- Reads `trailing.levels` from `app_settings` and chooses the highest configured level where `max_gain_percent >= gain_percent`.
+- Calculates `current_trailing_sl_price` as `entry_price * (1 + locked_gain_percent / 100)`.
+- Updates `current_trailing_sl_price` only when the locked trailing stop improves.
+- Creates `TRAILING_UPDATED` events only when the locked gain improves by at least `trailing.min_update_step_percent`.
+- Creates one idempotent `TRAILING_STOP_HIT` event when `latest_price <= current_trailing_sl_price`.
+- Closes the simulated trade as `closed_trailing` with `close_reason = trailing_stop` and `final_pnl_percent` when the trailing stop is hit.
+
+The default trailing settings are stored in the `trailing` group:
+
+- `trailing.enabled`
+- `trailing.activation_after_tp2`
+- `trailing.levels`
+- `trailing.min_update_step_percent`
+- `trailing.close_on_trailing_stop`
+
+Recommended one-shot flow from the project root:
+
+```bash
+cd python
+python scripts/run_active_trade_monitor_once.py --limit 50
+python scripts/run_trade_event_monitor_once.py --limit 50
+python scripts/run_trailing_monitor_once.py --limit 50
+```
+
+Run a loop test from inside the `python` folder:
+
+```bash
+python scripts/run_trailing_monitor_loop.py --interval 15 --limit 50
+```
+
+The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades and should run after the active trade price monitor and TP1/TP2/SL event monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
