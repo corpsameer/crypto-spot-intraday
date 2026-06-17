@@ -54,6 +54,7 @@
                 'Metrics Calculated' => $summary['metrics_calculated_count'],
                 'Scored / Score Passed' => $summary['scored_count'] . ' / ' . $summary['score_passed_count'],
                 'Watchlist Selected' => $summary['selected_for_watchlist_count'],
+                'Candidates Created' => $summary['candidate_created_count'],
                 'Threshold / Fallback' => $summary['threshold_selected_count'] . ' / ' . $summary['fallback_selected_count'],
                 'Top Symbol / Score' => ($scanRun->top_symbol ?: '-') . ' / ' . $fmt($scanRun->top_score),
             ] as $label => $value)
@@ -91,6 +92,11 @@
                         <option value="{{ $option }}" @selected($filters['selection'] === $option)>{{ str_replace('_', ' ', ucfirst($option)) }}</option>
                     @endforeach
                 </select>
+                <select name="candidate_created">
+                    @foreach (['all', 'yes', 'no'] as $option)
+                        <option value="{{ $option }}" @selected($filters['candidate_created'] === $option)>Candidate {{ ucfirst($option) }}</option>
+                    @endforeach
+                </select>
                 <select name="score_label">
                     @foreach (['all', 'strong', 'watchlist', 'weak'] as $option)
                         <option value="{{ $option }}" @selected($filters['score_label'] === $option)>{{ ucfirst($option) }}</option>
@@ -118,12 +124,13 @@
 
             <div class="table-wrap">
                 <table class="table scanner-table">
-                    <thead><tr><th>Rank</th><th>Selected</th><th>Symbol</th><th>Status</th><th>Score</th><th>15m %</th><th>1h %</th><th>4h %</th><th>24h %</th><th>Vol Spike 15m</th><th>Vol Spike 1h</th><th>Spread %</th><th>Depth USDT</th><th>Dist 24h High %</th><th>Close Strength</th><th>RS vs BTC</th><th>Risk Penalty</th><th>Rejection Reason</th><th>Evaluated</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Rank</th><th>Selected</th><th>Candidate</th><th>Symbol</th><th>Status</th><th>Score</th><th>15m %</th><th>1h %</th><th>4h %</th><th>24h %</th><th>Vol Spike 15m</th><th>Vol Spike 1h</th><th>Spread %</th><th>Depth USDT</th><th>Dist 24h High %</th><th>Close Strength</th><th>RS vs BTC</th><th>Risk Penalty</th><th>Rejection Reason</th><th>Evaluated</th><th>Actions</th></tr></thead>
                     <tbody>
                         @forelse ($results as $result)
                             <tr>
                                 <td>{{ $result->selected_for_watchlist ? ($result->selection_rank ?: '-') : '-' }}</td>
                                 <td><span class="badge {{ $result->selection_type === 'threshold' ? 'badge-green' : ($result->selection_type === 'fallback' ? 'badge-yellow' : 'badge-gray') }}">{{ $result->selection_type ?: 'no' }}</span></td>
+                                <td>{{ $result->candidate_created ? 'Yes' : 'No' }}<br><small>ID: {{ $result->candidate_watchlist_id ?: '-' }}</small></td>
                                 <td><strong>{{ $result->coindcx_symbol }}</strong><br><small>{{ $result->base_asset }}/{{ $result->quote_asset }}</small></td>
                                 <td><span class="badge {{ $statusClasses[$result->status] ?? 'badge-gray' }}">{{ $result->status }}</span></td>
                                 <td>{{ $fmt($result->final_score) }}<br><span class="badge {{ $result->score_label === 'strong' ? 'badge-green' : ($result->score_label === 'watchlist' ? 'badge-blue' : 'badge-gray') }}">{{ $result->score_label ?: '-' }}</span></td>
@@ -134,7 +141,7 @@
                                 <td>@include('scan-results.partials.score-breakdown', ['result' => $result])</td>
                             </tr>
                         @empty
-                            <tr><td colspan="20">No scan results match the current filters.</td></tr>
+                            <tr><td colspan="21">No scan results match the current filters.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

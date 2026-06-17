@@ -38,7 +38,7 @@ class ScanResultController extends Controller
 
         $query = $scanRun->scanResults()->select([
             'id', 'scan_run_id', 'coindcx_symbol', 'base_asset', 'quote_asset', 'status',
-            'prefilter_passed', 'score_passed', 'selected_for_watchlist', 'selection_type',
+            'prefilter_passed', 'score_passed', 'selected_for_watchlist', 'candidate_created', 'candidate_watchlist_id', 'selection_type',
             'selection_rank', 'selection_reason', 'prefilter_reason', 'rejection_reason',
             'quote_volume_24h', 'change_15m_percent', 'change_1h_percent', 'change_4h_percent', 'change_24h_percent',
             'volume_spike_15m', 'volume_spike_1h', 'spread_percent', 'orderbook_depth_usdt',
@@ -72,6 +72,7 @@ class ScanResultController extends Controller
             'q' => trim((string) $request->query('q', '')),
             'status' => (string) $request->query('status', 'all'),
             'selection' => (string) $request->query('selection', 'all'),
+            'candidate_created' => (string) $request->query('candidate_created', 'all'),
             'score_label' => (string) $request->query('score_label', 'all'),
             'rejection_reason' => (string) $request->query('rejection_reason', 'all'),
             'min_score' => $request->query('min_score'),
@@ -100,6 +101,12 @@ class ScanResultController extends Controller
             'threshold' => $query->where('selection_type', 'threshold'),
             'fallback' => $query->where('selection_type', 'fallback'),
             'not_selected' => $query->where('selected_for_watchlist', false),
+            default => null,
+        };
+
+        match ($filters['candidate_created']) {
+            'yes' => $query->where('candidate_created', true),
+            'no' => $query->where('candidate_created', false),
             default => null,
         };
 
@@ -141,6 +148,7 @@ class ScanResultController extends Controller
             ->selectRaw("SUM(CASE WHEN status = 'metrics_calculated' THEN 1 ELSE 0 END) as metrics_calculated_count")
             ->selectRaw("SUM(CASE WHEN status = 'scored' THEN 1 ELSE 0 END) as scored_count")
             ->selectRaw('SUM(CASE WHEN selected_for_watchlist = 1 THEN 1 ELSE 0 END) as selected_for_watchlist_count')
+            ->selectRaw('SUM(CASE WHEN candidate_created = 1 THEN 1 ELSE 0 END) as candidate_created_count')
             ->selectRaw("SUM(CASE WHEN selection_type = 'threshold' THEN 1 ELSE 0 END) as threshold_selected_count")
             ->selectRaw("SUM(CASE WHEN selection_type = 'fallback' THEN 1 ELSE 0 END) as fallback_selected_count")
             ->selectRaw('SUM(CASE WHEN score_passed = 1 THEN 1 ELSE 0 END) as score_passed_count')
@@ -156,6 +164,7 @@ class ScanResultController extends Controller
             'metrics_calculated_count' => (int) ($scanRun->metrics_calculated_count ?: $counts->metrics_calculated_count),
             'scored_count' => (int) ($scanRun->scored_count ?: $counts->scored_count),
             'selected_for_watchlist_count' => (int) ($counts->selected_for_watchlist_count ?? 0),
+            'candidate_created_count' => (int) ($counts->candidate_created_count ?? 0),
             'threshold_selected_count' => (int) (Arr::get($payload, 'selection_summary.threshold_selected_count') ?? $counts->threshold_selected_count ?? 0),
             'fallback_selected_count' => (int) (Arr::get($payload, 'selection_summary.fallback_selected_count') ?? $counts->fallback_selected_count ?? 0),
             'score_passed_count' => (int) ($counts->score_passed_count ?? 0),

@@ -11,6 +11,7 @@ from cryptospot.metrics_engine import MetricsEngine
 from cryptospot.prefilter_engine import PrefilterEngine
 from cryptospot.scan_liquidity_collector import ScanLiquidityCollector
 from cryptospot.scoring_engine import ScoringEngine
+from cryptospot.watchlist_candidate_engine import WatchlistCandidateEngine
 from cryptospot.settings import get_settings_by_group
 
 SERVICE_NAME = "scan_runner"
@@ -154,6 +155,14 @@ class ScanRunner:
                 "top_score": None,
                 "scan_results_updated": 0,
                 "scanner_metrics_updated": 0,
+                "skipped": 0,
+                "errors": [],
+            },
+            "watchlist": {
+                "eligible_scan_results": 0,
+                "created": 0,
+                "updated": 0,
+                "linked": 0,
                 "skipped": 0,
                 "errors": [],
             },
@@ -314,6 +323,18 @@ class ScanRunner:
             if scoring_summary.get("errors"):
                 summary["errors"].extend([f"Scoring: {error}" for error in scoring_summary.get("errors", [])])
 
+            watchlist_summary = WatchlistCandidateEngine().run_for_scan_run(summary["scan_run_id"])
+            summary["watchlist"] = {
+                "eligible_scan_results": watchlist_summary.get("eligible_scan_results", 0),
+                "created": watchlist_summary.get("created", 0),
+                "updated": watchlist_summary.get("updated", 0),
+                "linked": watchlist_summary.get("linked", 0),
+                "skipped": watchlist_summary.get("skipped", 0),
+                "errors": watchlist_summary.get("errors", []),
+            }
+            if watchlist_summary.get("errors"):
+                summary["errors"].extend([f"Watchlist: {error}" for error in watchlist_summary.get("errors", [])])
+
             summary["duration_seconds"] = int((datetime.now() - started).total_seconds())
             self._mark_scan_completed(summary)
             self._write_health(
@@ -451,7 +472,7 @@ class ScanRunner:
                 total_active_symbols = %s, ticker_rows_fetched = %s,
                 prefilter_passed_count = %s, candles_fetched_count = %s, metrics_calculated_count = %s,
                 scored_count = %s, top_score = %s, top_symbol = %s,
-                watchlist_created_count = 0, trade_plans_created_count = 0,
+                watchlist_created_count = %s, trade_plans_created_count = 0,
                 raw_payload = %s, updated_at = %s
             WHERE id = %s
             """,
@@ -463,6 +484,7 @@ class ScanRunner:
                 summary.get("scoring", {}).get("scored", 0),
                 summary.get("scoring", {}).get("top_score"),
                 summary.get("scoring", {}).get("top_symbol"),
+                summary.get("watchlist", {}).get("linked", 0),
                 json.dumps(summary, separators=(",", ":"), default=str), now, summary["scan_run_id"],
             ),
         )

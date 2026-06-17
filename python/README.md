@@ -365,3 +365,20 @@ Then run a manual scan:
 cd python
 python scripts/run_manual_scan_once.py --name "Fallback Selection Test" --quote USDT
 ```
+
+## Watchlist candidate creation from scan results
+
+After scan-based scoring and top-N fallback selection, the scan runner now converts selected `scan_results` rows into active `candidate_watchlists` rows. The source is strictly `selected_for_watchlist = 1`, so both threshold-selected rows and fallback-selected rows can become watchlist candidates.
+
+The watchlist candidate step keeps one active candidate per symbol. When a selected scan result points to a symbol that already has an active/refreshed `candidate_watchlists` row, that row is refreshed with the latest scan score, latest scan metadata, and capped raw-payload history instead of creating a duplicate active candidate.
+
+The candidate creation step links each processed `scan_results` row back to the watchlist row through `candidate_watchlist_id`, marks `candidate_created = 1`, stores the watchlist summary in `scan_runs.raw_payload.watchlist`, and sets `scan_runs.watchlist_created_count` to the number of selected scan rows linked in that scan.
+
+This task does **not** create trade plans, does **not** create simulated trades, does **not** place trades, does **not** use private CoinDCX APIs, and does **not** require API keys.
+
+Run a manual scan with watchlist candidate creation from the project root:
+
+```bash
+cd python
+python scripts/run_manual_scan_once.py --name "Watchlist Creation Test" --quote USDT
+```
