@@ -17,11 +17,13 @@ class ScanResult extends Model
         return [
             'prefilter_passed' => 'boolean',
             'score_passed' => 'boolean',
+            'selected_for_watchlist' => 'boolean',
             'candidate_created' => 'boolean',
             'trade_plan_created' => 'boolean',
             'suggested_expiry_at' => 'datetime',
             'evaluated_at' => 'datetime',
             'raw_payload' => 'array',
+            'selection_rank' => 'integer',
             'score_breakdown' => 'array',
             'last_price' => 'decimal:12',
             'change_24h_percent' => 'decimal:4',

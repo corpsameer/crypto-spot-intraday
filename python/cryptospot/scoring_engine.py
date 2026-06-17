@@ -21,8 +21,12 @@ DEFAULTS = {
     "scoring.weight_relative_strength_btc": 10,
     "scoring.weight_market_context": 5,
     "scoring.max_risk_penalty": -20,
-    "scanner.watchlist_score_threshold": 70,
-    "scanner.strong_score_threshold": 80,
+    "scanner.watchlist_score_threshold": 50,
+    "scanner.strong_score_threshold": 60,
+    "scanner.enable_fallback_candidates": True,
+    "scanner.min_fallback_candidate_score": 40,
+    "scanner.min_required_candidates": 3,
+    "scan.max_final_candidates": 10,
 }
 
 
@@ -52,6 +56,12 @@ class ScoringEngine:
             "scored": 0,
             "watchlist_passed": 0,
             "strong_passed": 0,
+            "selected_for_watchlist": 0,
+            "threshold_selected": 0,
+            "fallback_selected": 0,
+            "min_required_candidates": 3,
+            "min_fallback_candidate_score": 40,
+            "max_final_candidates": 10,
             "top_symbol": None,
             "top_score": None,
             "scan_results_updated": 0,
@@ -105,12 +115,19 @@ class ScoringEngine:
                     summary["errors"].append(f"{symbol}: {exc}")
                     logger.exception("Scan scoring failed for %s", symbol)
 
-            self._update_scan_run_summary(scan_run_id, scan_run, summary)
+            selection_summary = self._apply_selection(scan_run_id, settings)
+            selection_errors = selection_summary.pop("errors", [])
+            summary.update(selection_summary)
+            if selection_errors:
+                summary["errors"].extend(selection_errors)
+            self._update_scan_run_summary(scan_run_id, scan_run, summary, settings)
             status = "warning" if summary["errors"] or summary["skipped"] else "ok"
             message = (
-                f"scan_run_id={scan_run_id}, scored={summary['scored']}, "
-                f"watchlist_passed={summary['watchlist_passed']}, strong_passed={summary['strong_passed']}, "
-                f"top_symbol={summary['top_symbol']}, top_score={summary['top_score']}"
+                f"Scored {summary['scored']} symbols, selected {summary['selected_for_watchlist']} for watchlist "
+                f"including {summary['threshold_selected']} threshold and {summary['fallback_selected']} fallback; "
+                f"scan_run_id={scan_run_id}, watchlist_passed={summary['watchlist_passed']}, "
+                f"strong_passed={summary['strong_passed']}, top_symbol={summary['top_symbol']}, "
+                f"top_score={summary['top_score']}"
             )
             if status == "warning":
                 message += f", skipped={summary['skipped']}, errors={len(summary['errors'])}"
@@ -125,11 +142,25 @@ class ScoringEngine:
         settings = {}
         for key, default in DEFAULTS.items():
             value = get_setting(key, default)
+            if isinstance(default, bool):
+                settings[key] = self._safe_bool(value, default)
+                continue
             numeric = safe_float(value, default)
             settings[key] = numeric if numeric is not None else default
         if settings["scoring.max_risk_penalty"] > 0:
             settings["scoring.max_risk_penalty"] *= -1
+        settings["scanner.min_required_candidates"] = max(int(settings["scanner.min_required_candidates"]), 0)
+        settings["scan.max_final_candidates"] = max(int(settings["scan.max_final_candidates"]), 0)
         return settings
+
+    def _safe_bool(self, value, default=False):
+        if isinstance(value, bool):
+            return value
+        if value is None or value == "":
+            return default
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
 
     def _load_eligible_scan_results(self, scan_run_id: int) -> list[dict]:
         market_condition_select = ", sr.market_condition" if self._column_exists("scan_results", "market_condition") else ""
@@ -285,6 +316,118 @@ class ScoringEngine:
                 penalty -= 5
         return round(max(penalty, max_risk_penalty), 2)
 
+
+    def _selection_columns_present(self) -> tuple[bool, list[str]]:
+        required = ["selection_rank", "selection_type", "selected_for_watchlist", "selection_reason"]
+        missing = [column for column in required if not self._column_exists("scan_results", column)]
+        return not missing, missing
+
+    def _load_scored_scan_results(self, scan_run_id: int) -> list[dict]:
+        return fetch_all(
+            """
+            SELECT id AS scan_result_id, scanner_metric_id, coindcx_symbol, final_score
+            FROM scan_results
+            WHERE scan_run_id = %s AND status = 'scored' AND final_score IS NOT NULL
+            ORDER BY final_score DESC, id ASC
+            """,
+            (scan_run_id,),
+        )
+
+    def _apply_selection(self, scan_run_id: int, settings: dict) -> dict:
+        summary = {
+            "selected_for_watchlist": 0,
+            "threshold_selected": 0,
+            "fallback_selected": 0,
+            "min_required_candidates": int(settings["scanner.min_required_candidates"]),
+            "min_fallback_candidate_score": settings["scanner.min_fallback_candidate_score"],
+            "max_final_candidates": int(settings["scan.max_final_candidates"]),
+        }
+        present, missing = self._selection_columns_present()
+        if not present:
+            raise RuntimeError(f"scan_results fallback selection columns are missing: {', '.join(missing)}. Run php artisan migrate.")
+        scored_rows = self._load_scored_scan_results(scan_run_id)
+        if not scored_rows:
+            return summary
+
+        watchlist_threshold = settings["scanner.watchlist_score_threshold"]
+        min_fallback_score = settings["scanner.min_fallback_candidate_score"]
+        min_required = int(settings["scanner.min_required_candidates"])
+        max_final = int(settings["scan.max_final_candidates"])
+        enable_fallback = bool(settings["scanner.enable_fallback_candidates"])
+
+        selected_by_id = {}
+        for row in scored_rows:
+            if len(selected_by_id) >= max_final:
+                break
+            if safe_float(row.get("final_score"), 0) >= watchlist_threshold:
+                selected_by_id[row["scan_result_id"]] = {**row, "selection_type": "threshold"}
+
+        if enable_fallback and len(selected_by_id) < min_required:
+            for row in scored_rows:
+                if len(selected_by_id) >= min(min_required, max_final):
+                    break
+                if row["scan_result_id"] in selected_by_id:
+                    continue
+                if safe_float(row.get("final_score"), 0) >= min_fallback_score:
+                    selected_by_id[row["scan_result_id"]] = {**row, "selection_type": "fallback"}
+
+        selected = sorted(selected_by_id.values(), key=lambda r: (-safe_float(r.get("final_score"), 0), r["scan_result_id"]))[:max_final]
+        selected_ids = {row["scan_result_id"] for row in selected}
+        rank_by_id = {row["scan_result_id"]: rank for rank, row in enumerate(selected, start=1)}
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for row in scored_rows:
+            try:
+                if row["scan_result_id"] in selected_ids:
+                    selection_type = selected_by_id[row["scan_result_id"]]["selection_type"]
+                    reason = (
+                        "Selected because final_score is above watchlist threshold"
+                        if selection_type == "threshold"
+                        else "Selected as top-N fallback candidate because too few symbols crossed threshold"
+                    )
+                    selected_for_watchlist = 1
+                    rank = rank_by_id[row["scan_result_id"]]
+                else:
+                    selection_type = "none"
+                    reason = "Not selected for watchlist"
+                    selected_for_watchlist = 0
+                    rank = None
+                execute(
+                    """
+                    UPDATE scan_results
+                    SET selected_for_watchlist = %s, selection_rank = %s, selection_type = %s,
+                        selection_reason = %s, updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (selected_for_watchlist, rank, selection_type, reason if selected_for_watchlist else None, now, row["scan_result_id"]),
+                )
+                if row.get("scanner_metric_id"):
+                    self._update_metric_selection_payload(row["scanner_metric_id"], {
+                        "selected_for_watchlist": bool(selected_for_watchlist),
+                        "selection_type": selection_type,
+                        "selection_rank": rank,
+                        "selection_reason": reason if selected_for_watchlist else None,
+                    }, now)
+            except Exception as exc:
+                error = f"{row.get('coindcx_symbol')}: selection_update_failed: {exc}"
+                summary.setdefault("selection_errors", []).append(error)
+                summary.setdefault("errors", []).append(error)
+                logger.exception("Selection update failed for %s", row.get("coindcx_symbol"))
+
+        summary["threshold_selected"] = sum(1 for row in selected if selected_by_id[row["scan_result_id"]]["selection_type"] == "threshold")
+        summary["fallback_selected"] = sum(1 for row in selected if selected_by_id[row["scan_result_id"]]["selection_type"] == "fallback")
+        summary["selected_for_watchlist"] = summary["threshold_selected"] + summary["fallback_selected"]
+        return summary
+
+    def _update_metric_selection_payload(self, scanner_metric_id: int, selection: dict, now: str) -> int:
+        row = fetch_one("SELECT raw_payload FROM scanner_metrics WHERE id = %s LIMIT 1", (scanner_metric_id,))
+        raw = self._loads(row.get("raw_payload") if row else None)
+        raw["selection"] = selection
+        return execute(
+            "UPDATE scanner_metrics SET raw_payload = %s, updated_at = %s WHERE id = %s",
+            (json.dumps(raw, separators=(",", ":"), default=json_default), now, scanner_metric_id),
+        )
+
     def _update_scan_result(self, scan_result_id: int, scored: dict) -> int:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return execute(
@@ -309,10 +452,21 @@ class ScoringEngine:
             (scored["final_score"], scored["score_label"], scored["risk_penalty"], 1 if scored["passes_watchlist"] else 0, 1 if scored["passes_strong"] else 0, now, scanner_metric_id),
         )
 
-    def _update_scan_run_summary(self, scan_run_id: int, scan_run: dict, summary: dict):
+    def _update_scan_run_summary(self, scan_run_id: int, scan_run: dict, summary: dict, settings: dict):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         raw = self._loads(scan_run.get("raw_payload")) or {}
         raw["scoring"] = summary
+        raw["selection"] = {
+            "enable_fallback_candidates": settings["scanner.enable_fallback_candidates"],
+            "watchlist_threshold": settings["scanner.watchlist_score_threshold"],
+            "strong_threshold": settings["scanner.strong_score_threshold"],
+            "min_fallback_candidate_score": settings["scanner.min_fallback_candidate_score"],
+            "min_required_candidates": int(settings["scanner.min_required_candidates"]),
+            "max_final_candidates": int(settings["scan.max_final_candidates"]),
+            "threshold_selected": summary.get("threshold_selected", 0),
+            "fallback_selected": summary.get("fallback_selected", 0),
+            "total_selected_for_watchlist": summary.get("selected_for_watchlist", 0),
+        }
         return execute(
             """
             UPDATE scan_runs
