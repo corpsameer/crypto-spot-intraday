@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ScanResult;
 use App\Models\ScanRun;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\View\View;
@@ -82,10 +80,10 @@ class ScanResultController extends Controller
         ];
     }
 
-    private function applyFilters(Builder $query, array $filters): void
+    private function applyFilters($query, array $filters): void
     {
         if ($filters['q'] !== '') {
-            $query->where(function (Builder $query) use ($filters): void {
+            $query->where(function ($query) use ($filters): void {
                 $like = '%' . $filters['q'] . '%';
                 $query->where('coindcx_symbol', 'like', $like)
                     ->orWhere('base_asset', 'like', $like)
@@ -118,7 +116,7 @@ class ScanResultController extends Controller
         }
     }
 
-    private function applySort(Builder $query, string $sort): void
+    private function applySort($query, string $sort): void
     {
         match ($sort) {
             'final_score_asc' => $query->orderBy('final_score')->orderBy('coindcx_symbol'),
