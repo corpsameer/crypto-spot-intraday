@@ -382,3 +382,18 @@ Run a manual scan with watchlist candidate creation from the project root:
 cd python
 python scripts/run_manual_scan_once.py --name "Watchlist Creation Test" --quote USDT
 ```
+
+## Trade plan generation from watchlist candidates
+
+After scan-based watchlist creation, selected `scan_results` rows linked to active or refreshed `candidate_watchlists` are converted into pending `trade_plans`. The generator is intentionally scan-based: it runs after watchlist creation during a manual or scheduled scan and does not continuously scan all markets.
+
+The trade plan generator creates a breakout plan for each eligible selected candidate. It may also create a pullback plan when the candidate appears extended, such as when short-term momentum is strong, the price is near its 24h high, or overextension risk is elevated. Each pending plan includes a trigger price, entry price, TP1, TP2, SL, trailing start price, validity window, score context, and raw scan payload history.
+
+No simulated trade is created by this step. A later trade plan trigger monitor will be responsible for watching pending plans and creating simulated trades only when an entry condition is met. This project step does not place real trades, does not use private CoinDCX APIs, and does not require API keys.
+
+Run a manual scan with trade plan generation:
+
+```bash
+cd python
+python scripts/run_manual_scan_once.py --name "Trade Plan Generator Test" --quote USDT
+```
