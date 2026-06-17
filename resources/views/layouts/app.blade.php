@@ -74,6 +74,7 @@
             <a class="nav-link" href="{{ route('cryptospot.watchlist.index') }}">Watchlist</a>
             <a class="nav-link" href="{{ route('cryptospot.trade-plans.index') }}">Trade Plans</a>
             <a class="nav-link" href="{{ route('cryptospot.simulated-trades.index') }}">Simulated Trades</a>
+            <a class="nav-link" href="{{ route('cryptospot.daily-gainers.index') }}">Daily Gainers</a>
             <a class="nav-link" href="{{ route('cryptospot.settings.index') }}">Settings</a>
             <span>{{ auth()->user()->email }}</span>
             <form method="POST" action="{{ route('cryptospot.logout') }}">

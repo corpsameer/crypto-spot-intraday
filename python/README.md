@@ -618,3 +618,25 @@ python scripts/run_trade_expiry_monitor_loop.py --interval 15 --limit 50
 ```
 
 The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades whose expiry time has passed and should run after the active trade price monitor, TP1/TP2/SL event monitor, and trailing monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
+
+## Daily gainer leaderboard
+
+The daily gainer leaderboard is a one-shot utility for capturing the actual CoinDCX spot top gainers for a date. It fetches the CoinDCX ticker endpoint once per run, matches rows to active `spot_symbols`, applies a quote filter such as `USDT`, ranks symbols by 24h percentage change, and refreshes rows in `daily_gainer_leaderboard` for that date/quote/source.
+
+This command does **not** fetch candles, fetch orderbooks, poll liquidity, scan continuously, create watchlist candidates, create trade plans, create simulated trades, create trade events, call private CoinDCX APIs, require API keys, or place real trades. The stored rows are intended for later missed-gainer comparison in a future analyzer task.
+
+Run from the Python folder:
+
+```bash
+cd python
+python scripts/run_daily_gainer_leaderboard_once.py --quote USDT --limit 100
+```
+
+Optional arguments:
+
+```bash
+python scripts/run_daily_gainer_leaderboard_once.py --date 2026-06-17 --quote USDT --limit 100
+python scripts/run_daily_gainer_leaderboard_once.py --quote ALL --limit 100
+```
+
+The script writes a `daily_gainer_leaderboard` entry to `system_health_logs` with the run summary.

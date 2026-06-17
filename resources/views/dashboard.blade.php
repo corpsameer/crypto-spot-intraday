@@ -37,6 +37,12 @@
                     <p>Review active/refreshed candidates from selected scan results.</p>
                     <div class="status">Open</div>
                 </a>
+            @elseif ($module === 'Daily Gainers')
+                <a class="card card-link" href="{{ route('cryptospot.daily-gainers.index') }}">
+                    <h2>Daily Gainers</h2>
+                    <p>Review actual CoinDCX 24h top gainers captured by the one-shot ticker leaderboard.</p>
+                    <div class="status">Open</div>
+                </a>
             @elseif ($module === 'Simulated Trades')
                 <a class="card card-link" href="{{ route('cryptospot.simulated-trades.index') }}">
                     <h2>Simulated Trades</h2>
