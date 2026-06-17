@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ScanResultController;
 use App\Http\Controllers\SpotSymbolController;
+use App\Http\Controllers\WatchlistController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
@@ -24,6 +25,8 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::get('/spot-symbols', [SpotSymbolController::class, 'index'])->name('spot-symbols.index');
         Route::get('/scans/latest', [ScanResultController::class, 'latest'])->name('scans.latest');
+        Route::get('/watchlist', [WatchlistController::class, 'index'])->name('watchlist.index');
+        Route::get('/trade-plans', [WatchlistController::class, 'tradePlans'])->name('trade-plans.index');
         Route::get('/scans/{scanRun}', [ScanResultController::class, 'show'])->name('scans.show');
         Route::post('/spot-symbols/sync', [SpotSymbolController::class, 'sync'])->name('spot-symbols.sync');
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
