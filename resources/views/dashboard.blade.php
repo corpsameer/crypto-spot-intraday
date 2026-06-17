@@ -43,6 +43,12 @@
                     <p>Review actual CoinDCX 24h top gainers captured by the one-shot ticker leaderboard.</p>
                     <div class="status">Open</div>
                 </a>
+            @elseif ($module === 'Missed Gainers')
+                <a class="card card-link" href="{{ route('cryptospot.missed-gainers.index') }}">
+                    <h2>Missed Gainers</h2>
+                    <p>Classify actual top gainers as missed, rejected, unplanned, untriggered, or trade-created.</p>
+                    <div class="status">Open</div>
+                </a>
             @elseif ($module === 'Simulated Trades')
                 <a class="card card-link" href="{{ route('cryptospot.simulated-trades.index') }}">
                     <h2>Simulated Trades</h2>
