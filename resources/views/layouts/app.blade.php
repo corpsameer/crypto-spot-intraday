@@ -34,6 +34,28 @@
         .badge-inactive { background: #fee2e2; color: #991b1b; }
         .actions { align-items: center; display: flex; gap: .75rem; }
         .primary-button { background: #2563eb; border: 0; border-radius: .375rem; color: #fff; cursor: pointer; font-weight: 700; padding: .75rem 1rem; }
+        .secondary-button { background: #fff; border: 1px solid #d1d5db; border-radius: .375rem; color: #374151; display: inline-block; font-weight: 700; padding: .65rem .9rem; text-decoration: none; }
+        .page-header-actions { align-items: center; display: flex; justify-content: space-between; gap: 1rem; }
+        .section-card { margin-bottom: 1rem; }
+        .metric-grid { margin-bottom: 1rem; }
+        .metric-card span, .metric-grid span { color: #6b7280; display: block; font-size: .8rem; text-transform: uppercase; }
+        .metric-card strong, .metric-grid strong { display: block; margin-top: .35rem; }
+        .run-list { display: flex; flex-direction: column; gap: .4rem; }
+        .run-link { border: 1px solid #e5e7eb; border-radius: .5rem; color: #1f2937; padding: .5rem .75rem; text-decoration: none; }
+        .run-link.active { background: #eff6ff; border-color: #93c5fd; }
+        .filters { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 1rem; }
+        select { border: 1px solid #d1d5db; border-radius: .375rem; padding: .5rem; width: 100%; }
+        .table-wrap { overflow-x: auto; }
+        .scanner-table { min-width: 1800px; }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-gray { background: #f3f4f6; color: #4b5563; }
+        .details-panel { min-width: 220px; }
+        .details-panel summary { color: #2563eb; cursor: pointer; font-weight: 700; }
+        .details-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+        pre { background: #111827; border-radius: .5rem; color: #e5e7eb; max-width: 520px; overflow: auto; padding: .75rem; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -41,6 +63,7 @@
         <a class="brand" href="{{ route('cryptospot.dashboard') }}">Crypto Spot Intraday</a>
         <div class="nav-right">
             <a class="nav-link" href="{{ route('cryptospot.spot-symbols.index') }}">Spot Symbols</a>
+            <a class="nav-link" href="{{ route('cryptospot.scans.latest') }}">Market Scanner</a>
             <a class="nav-link" href="{{ route('cryptospot.settings.index') }}">Settings</a>
             <span>{{ auth()->user()->email }}</span>
             <form method="POST" action="{{ route('cryptospot.logout') }}">

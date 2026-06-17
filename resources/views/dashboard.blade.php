@@ -18,6 +18,18 @@
                     <h2>{{ $module }}</h2>
                     <div class="status">Open</div>
                 </a>
+            @elseif ($module === 'Scan Results')
+                <a class="card card-link" href="{{ route('cryptospot.scans.latest') }}">
+                    <h2>Market Scanner / Latest Scan Results</h2>
+                    @if ($latestScanRun)
+                        <p>#{{ $latestScanRun->id }} - {{ $latestScanRun->status }}</p>
+                        <p>Top: {{ $latestScanRun->top_symbol ?: '-' }} / {{ $latestScanRun->top_score !== null ? number_format((float) $latestScanRun->top_score, 2) : '-' }}</p>
+                        <p>Selected candidates: {{ $latestScanRun->scanResults()->where('selected_for_watchlist', true)->count() }}</p>
+                    @else
+                        <p>No scans yet.</p>
+                    @endif
+                    <div class="status">Open</div>
+                </a>
             @else
                 <article class="card">
                     <h2>{{ $module }}</h2>
