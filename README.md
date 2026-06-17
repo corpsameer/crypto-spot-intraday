@@ -206,3 +206,14 @@ Task 30 adds a manual/scheduled one-shot daily gainer leaderboard. It fetches Co
 cd python
 python scripts/run_daily_gainer_leaderboard_once.py --quote USDT --limit 100
 ```
+
+### Missed gainer analyzer
+
+Task 31 adds a stored-data-only missed gainer analyzer. After the daily gainer leaderboard has been built, run the analyzer to classify actual top gainers against scanner capture, watchlist selection, trade plan creation, and simulated trade creation:
+
+```bash
+cd python
+python scripts/run_missed_gainer_analyzer_once.py --quote USDT --min-change 10 --limit 100
+```
+
+The analyzer populates `missed_gainers`, writes `missed_gainer_analyzer` health logs, and does not call CoinDCX APIs, fetch market data, create trades, or place real orders.

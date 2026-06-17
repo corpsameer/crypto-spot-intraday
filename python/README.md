@@ -640,3 +640,24 @@ python scripts/run_daily_gainer_leaderboard_once.py --quote ALL --limit 100
 ```
 
 The script writes a `daily_gainer_leaderboard` entry to `system_health_logs` with the run summary.
+
+## Missed gainer analyzer
+
+The missed gainer analyzer is a one-shot review utility that uses stored `daily_gainer_leaderboard` rows and compares the actual top gainers against existing `scan_results`, `candidate_watchlists`, `trade_plans`, `simulated_trades`, and `trade_events`.
+
+It populates `missed_gainers` with a per-symbol classification such as `missed_completely`, `captured_not_selected`, `selected_no_trade_plan`, `trade_plan_not_triggered`, or `captured_trade_created`. The analyzer is idempotent for each `analysis_date` + `coindcx_symbol` pair and refreshes existing analysis rows on re-run.
+
+This utility only reads existing scanner/simulation data and writes analysis rows plus a `missed_gainer_analyzer` health log entry. It does **not** call the CoinDCX API, fetch tickers, fetch candles, fetch orderbook/liquidity data, place trades, create simulated trades, or create trade events.
+
+Run it from the Python folder:
+
+```bash
+cd python
+python scripts/run_missed_gainer_analyzer_once.py --quote USDT --min-change 10 --limit 100
+```
+
+Optional date-specific run:
+
+```bash
+python scripts/run_missed_gainer_analyzer_once.py --date 2026-06-17 --quote USDT --min-change 10 --limit 100
+```

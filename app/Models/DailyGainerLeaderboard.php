@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DailyGainerLeaderboard extends Model
 {
@@ -30,4 +31,5 @@ class DailyGainerLeaderboard extends Model
     public function spotSymbol(): BelongsTo { return $this->belongsTo(SpotSymbol::class); }
     public function bestScanRun(): BelongsTo { return $this->belongsTo(ScanRun::class, 'best_scan_run_id'); }
     public function bestScanResult(): BelongsTo { return $this->belongsTo(ScanResult::class, 'best_scan_result_id'); }
+    public function missedGainer(): HasOne { return $this->hasOne(MissedGainer::class, 'leaderboard_id'); }
 }
