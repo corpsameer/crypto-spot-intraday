@@ -407,3 +407,33 @@ Task 19.1 keeps the MVP workflow scan-based and fixes two scan-run visibility an
 - Market context refreshes fresh BTC/ETH candles immediately before calculating and inserting each scan market snapshot.
 - BTC/ETH context refresh is intentionally limited to the resolved BTC and ETH context symbols only (`BTCUSDT`/`ETHUSDT`, with `BTCINR`/`ETHINR` fallback when USDT is unavailable); it does not fetch candles for all coins.
 - No real trading, private CoinDCX API usage, API keys, trade-trigger monitoring, simulated trade creation, active trade monitoring, TP/SL event logging, or continuous all-market scanning is added by this fix.
+
+## Trade plan trigger monitor
+
+The trade plan trigger monitor is the lightweight Task 22 monitor for pending entry plans. It monitors only `trade_plans` rows whose status is `pending` or `watching`; it is not an all-coin scanner and it does not fetch candles or orderbooks.
+
+On each cycle, it fetches the CoinDCX public ticker once, matches current prices only for symbols that have active trade plans, and updates runtime tracking fields on those plans:
+
+- `latest_price`
+- `highest_price_seen`
+- `lowest_price_seen`
+- `max_plan_gain_percent`
+- `max_plan_drawdown_percent`
+
+Breakout plans are marked `triggered` when `latest_price >= trigger_price`. Pullback plans are marked `triggered` when `latest_price <= trigger_price`. Plans past `expires_at` are marked `expired` before trigger checks. Pending plans that are neither expired nor triggered become `watching`.
+
+This monitor does **not** create simulated trades yet, does **not** create trade events, does **not** place real trades, does **not** use private CoinDCX APIs or API keys, and does **not** scan all coins. Later tasks will convert triggered breakout and pullback plans into simulated trades.
+
+Run a one-shot check from inside the `python` folder:
+
+```bash
+python scripts/run_trade_plan_trigger_monitor_once.py --limit 50
+```
+
+Run a loop test from inside the `python` folder:
+
+```bash
+python scripts/run_trade_plan_trigger_monitor_loop.py --interval 30 --limit 50
+```
+
+The loop uses `monitor.trade_plan_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 30 seconds if the setting is missing. Supervisor setup is intentionally not included in this task.
