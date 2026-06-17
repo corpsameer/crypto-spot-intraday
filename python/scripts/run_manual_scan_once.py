@@ -24,13 +24,19 @@ def main() -> int:
 
     print("Manual scan summary")
     print("===================")
-    for key in (
+    preferred_keys = (
         "scan_run_id", "run_uuid", "scan_type", "scan_name", "status", "quote_filter",
         "active_symbols", "ticker_rows_fetched", "matched_symbols", "scan_results_created",
         "market_context", "prefilter", "liquidity", "candles", "metrics", "scoring", "watchlist",
-        "duration_seconds", "skipped", "errors",
-    ):
+        "trade_plans", "duration_seconds", "skipped", "errors",
+    )
+    printed = set()
+    for key in preferred_keys:
+        printed.add(key)
         print(f"{key}: {json.dumps(summary.get(key), default=str)}")
+    for key in summary:
+        if key not in printed:
+            print(f"{key}: {json.dumps(summary.get(key), default=str)}")
 
     return 1 if summary.get("status") == "failed" else 0
 
