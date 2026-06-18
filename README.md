@@ -441,3 +441,34 @@ php artisan db:seed --class=PortfolioAccountSeeder
 ```
 
 For initial local/dev setup this seeder uses `updateOrCreate` for the default `name` + `currency`. In future production use, portfolio seeders should not blindly reset `current_cash`, reserved/deployed balances, or P&L once a portfolio has trade history.
+
+
+## Portfolio settings
+
+Task 44 adds configurable portfolio-aware simulation defaults in the Laravel `app_settings` table under the `portfolio` group. These settings are read-only configuration for later portfolio gate tasks and are not enforced yet.
+
+Default portfolio assumptions:
+
+- Portfolio simulation is controlled through the `app_settings` group `portfolio`.
+- Defaults assume INR 100,000 starting capital.
+- Max open trades defaults to `3`.
+- Max open opportunities defaults to `3`.
+- Duplicate symbol prevention defaults to `true`.
+- Symbol cooldown defaults to `24` hours.
+- Allocation defaults:
+  - strong: INR 40,000
+  - watchlist: INR 30,000
+  - weak: INR 20,000
+  - fallback: INR 15,000
+
+Seed and verify portfolio settings with:
+
+```bash
+php artisan optimize:clear
+php artisan db:seed --class=AppSettingSeeder
+php artisan db:seed --class=PortfolioAccountSeeder
+cd python
+python scripts/check_portfolio_settings.py
+```
+
+These settings are intentionally not enforced until the portfolio gate tasks are implemented. Task 44 does not change trade plan generation, allocation, reservation, duplicate prevention, monitor behavior, scanner behavior, scoring behavior, private API usage, API key handling, or real trading behavior.
