@@ -377,3 +377,45 @@ cp .env.example .env
 ```
 
 After confirming `.env` points to a local/dev DB, run `php artisan migrate:fresh --seed` and continue with the checklist.
+
+## Portfolio-aware simulation foundation checks
+
+Task 43 adds the database foundation for an INR 100,000 paper portfolio. These checks verify schema and seed data only; they do not allocate capital, reserve cash, modify monitor behavior, place real trades, or call CoinDCX private APIs.
+
+```bash
+php artisan optimize:clear
+php artisan migrate
+php artisan db:seed --class=PortfolioAccountSeeder
+```
+
+Verify the default portfolio and portfolio columns:
+
+```sql
+SELECT
+    id,
+    name,
+    currency,
+    starting_capital,
+    current_cash,
+    reserved_cash,
+    deployed_capital,
+    realized_pnl,
+    unrealized_pnl,
+    total_equity,
+    max_open_trades,
+    max_pending_trade_plans,
+    is_active
+FROM portfolio_accounts;
+
+SELECT COUNT(*) FROM portfolio_transactions;
+
+SHOW COLUMNS FROM trade_plans LIKE 'portfolio_account_id';
+SHOW COLUMNS FROM trade_plans LIKE 'allocated_capital';
+SHOW COLUMNS FROM trade_plans LIKE 'portfolio_status';
+
+SHOW COLUMNS FROM simulated_trades LIKE 'portfolio_account_id';
+SHOW COLUMNS FROM simulated_trades LIKE 'quantity';
+SHOW COLUMNS FROM simulated_trades LIKE 'unrealized_pnl_amount';
+```
+
+Future production seeders should not blindly reset `current_cash`, reserved/deployed balances, or P&L after the default portfolio has real simulation history.

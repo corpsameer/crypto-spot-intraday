@@ -424,3 +424,20 @@ sudo tail -f /var/log/cryptospot/realtime-monitors.log
 tail -f storage/logs/cryptospot-scheduler.log
 tail -f storage/logs/laravel.log
 ```
+
+## Portfolio-aware simulation foundation
+
+Task 43 adds the database and Laravel model foundation for future capital-aware paper simulation. The default portfolio starts with INR 100,000 and is seeded as `Default INR Portfolio`.
+
+- `portfolio_accounts` stores paper capital state, including cash, reserved cash, deployed capital, realized/unrealized P&L, total equity, and portfolio-level limits.
+- `portfolio_transactions` will store future capital movements such as deposits, reservations, releases, trade entries, trade exits, and P&L snapshots.
+- `trade_plans` and `simulated_trades` now include nullable portfolio fields so future tasks can attach allocations and INR P&L without changing the existing scanner/trade lifecycle yet.
+- Allocation, reservation, release, INR P&L updates, duplicate-symbol gates, and portfolio dashboard analytics are intentionally deferred to later tasks.
+
+Seed the default paper portfolio with:
+
+```bash
+php artisan db:seed --class=PortfolioAccountSeeder
+```
+
+For initial local/dev setup this seeder uses `updateOrCreate` for the default `name` + `currency`. In future production use, portfolio seeders should not blindly reset `current_cash`, reserved/deployed balances, or P&L once a portfolio has trade history.
