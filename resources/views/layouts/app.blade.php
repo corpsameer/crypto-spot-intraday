@@ -62,6 +62,9 @@
         .details-panel { min-width: 220px; }
         .details-panel summary { color: #2563eb; cursor: pointer; font-weight: 700; }
         .details-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+        .quick-actions { flex-wrap: wrap; justify-content: flex-end; }
+        h2 { margin-top: 0; }
+        .section-card h2 { margin-bottom: .75rem; }
         pre { background: #111827; border-radius: .5rem; color: #e5e7eb; max-width: 520px; overflow: auto; padding: .75rem; white-space: pre-wrap; }
     </style>
 </head>
@@ -69,6 +72,7 @@
     <nav class="navbar">
         <a class="brand" href="{{ route('cryptospot.dashboard') }}">Crypto Spot Intraday</a>
         <div class="nav-right">
+            <a class="nav-link" href="{{ route('cryptospot.dashboard') }}">Dashboard</a>
             <a class="nav-link" href="{{ route('cryptospot.spot-symbols.index') }}">Spot Symbols</a>
             <a class="nav-link" href="{{ route('cryptospot.scans.latest') }}">Market Scanner</a>
             <a class="nav-link" href="{{ route('cryptospot.watchlist.index') }}">Watchlist</a>
