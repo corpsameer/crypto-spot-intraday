@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
+from cryptospot.capital_allocator import CapitalAllocator
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 from cryptospot.portfolio_gate import PortfolioGate
@@ -62,6 +63,11 @@ class TradePlanGenerator:
             "portfolio_approved": 0,
             "portfolio_rejected": 0,
             "portfolio_rejection_reasons": {},
+            "capital_allocated_total": 0.0,
+            "capital_reserved_total": 0.0,
+            "capital_reservations_created": 0,
+            "allocation_rejected": 0,
+            "allocation_rejection_reasons": {},
         }
         try:
             if not self._setting_bool("scan.create_trade_plans", DEFAULTS["scan.create_trade_plans"]):
@@ -90,6 +96,7 @@ class TradePlanGenerator:
 
             settings = self._load_plan_settings()
             portfolio_gate = PortfolioGate(settings_reader=get_setting)
+            capital_allocator = CapitalAllocator(settings_reader=get_setting)
             portfolio_state = portfolio_gate.get_portfolio_state()
             summary["portfolio_enabled"] = bool(portfolio_state.get("settings", {}).get("enabled", True))
             for row in rows:
@@ -110,12 +117,30 @@ class TradePlanGenerator:
                             summary["plans_updated"] += 1
 
                         if gate_result.get("approved"):
-                            summary["portfolio_approved"] += 1
-                            if plan["entry_strategy"] == "breakout":
-                                summary["breakout_plans"] += 1
-                                primary_plan_id = plan_id
-                            elif plan["entry_strategy"] == "pullback":
-                                summary["pullback_plans"] += 1
+                            allocation = capital_allocator.allocate_for_candidate(
+                                self._candidate_for_gate(row, plan),
+                                self._portfolio_account(gate_result.get("portfolio_account_id")),
+                            )
+                            if allocation.get("approved"):
+                                reservation = capital_allocator.reserve_for_trade_plan(plan_id, allocation)
+                                summary["portfolio_approved"] += 1
+                                summary["capital_allocated_total"] += float(allocation.get("allocated_capital") or 0)
+                                if reservation.get("reserved"):
+                                    summary["capital_reserved_total"] += float(allocation.get("allocated_capital") or 0)
+                                if reservation.get("created_transaction"):
+                                    summary["capital_reservations_created"] += 1
+                                if plan["entry_strategy"] == "breakout":
+                                    summary["breakout_plans"] += 1
+                                    primary_plan_id = plan_id
+                                elif plan["entry_strategy"] == "pullback":
+                                    summary["pullback_plans"] += 1
+                            else:
+                                summary["allocation_rejected"] += 1
+                                summary["portfolio_rejected"] += 1
+                                reason = allocation.get("reason") or "portfolio_rejected_insufficient_cash_after_reserve"
+                                summary["allocation_rejection_reasons"][reason] = summary["allocation_rejection_reasons"].get(reason, 0) + 1
+                                summary["portfolio_rejection_reasons"][reason] = summary["portfolio_rejection_reasons"].get(reason, 0) + 1
+                                self._mark_allocation_rejected(plan_id, allocation, columns)
                         else:
                             summary["portfolio_rejected"] += 1
                             reason = gate_result.get("reason") or "portfolio_rejected_unknown_error"
@@ -285,6 +310,33 @@ class TradePlanGenerator:
             "spot_symbol_id": row.get("spot_symbol_id"),
         }
 
+    def _portfolio_account(self, account_id):
+        if not account_id:
+            return None
+        return fetch_one("SELECT * FROM portfolio_accounts WHERE id = %s LIMIT 1", (account_id,))
+
+    def _mark_allocation_rejected(self, plan_id, allocation, columns):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        plan = fetch_one("SELECT raw_payload FROM trade_plans WHERE id = %s LIMIT 1", (plan_id,)) or {}
+        raw_payload = self._loads(plan.get("raw_payload"))
+        raw_payload["portfolio_allocation"] = allocation
+        values = {
+            "status": "portfolio_rejected",
+            "portfolio_status": "rejected",
+            "portfolio_rejection_reason": allocation.get("reason") or "portfolio_rejected_insufficient_cash_after_reserve",
+            "rejection_reason": allocation.get("reason") or "portfolio_rejected_insufficient_cash_after_reserve",
+            "portfolio_account_id": allocation.get("portfolio_account_id"),
+            "allocated_capital": None,
+            "allocation_percent": None,
+            "capital_reserved_at": None,
+            "portfolio_notes": json.dumps(allocation.get("details", {}), separators=(",", ":"), default=json_default),
+            "raw_payload": json.dumps(raw_payload, separators=(",", ":"), default=json_default),
+            "updated_at": now,
+        }
+        values = {key: value for key, value in values.items() if key in columns}
+        assignments = ", ".join([f"{key} = %s" for key in values])
+        return execute(f"UPDATE trade_plans SET {assignments} WHERE id = %s", tuple(values.values()) + (plan_id,))
+
     def _apply_portfolio_gate(self, plan, gate_result):
         raw_payload = self._loads(plan.get("raw_payload"))
         raw_payload["portfolio_gate"] = gate_result
@@ -292,11 +344,12 @@ class TradePlanGenerator:
         plan["portfolio_account_id"] = gate_result.get("portfolio_account_id")
         plan["portfolio_status"] = gate_result.get("portfolio_status")
         plan["portfolio_notes"] = json.dumps(gate_result.get("details", {}), separators=(",", ":"), default=json_default)
-        plan["allocated_capital"] = None
-        plan["allocation_percent"] = None
         if gate_result.get("approved"):
             plan["portfolio_rejection_reason"] = None
             return plan
+        plan["allocated_capital"] = None
+        plan["allocation_percent"] = None
+        plan["capital_reserved_at"] = None
         plan["status"] = "portfolio_rejected"
         plan["portfolio_rejection_reason"] = gate_result.get("reason") or "portfolio_rejected_unknown_error"
         plan["rejection_reason"] = plan["portfolio_rejection_reason"]
