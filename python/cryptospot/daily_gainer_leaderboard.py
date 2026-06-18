@@ -187,7 +187,7 @@ class DailyGainerLeaderboardBuilder:
     def _insert_sql(self) -> str:
         return """
             INSERT INTO daily_gainer_leaderboard
-            (leaderboard_date, run_time, source, quote_filter, rank, spot_symbol_id, coindcx_symbol, api_pair, base_asset, quote_asset,
+            (leaderboard_date, run_time, source, quote_filter, `rank`, spot_symbol_id, coindcx_symbol, api_pair, base_asset, quote_asset,
              last_price, open_price_24h, high_price_24h, low_price_24h, change_24h_percent, abs_change_24h_percent, volume_24h, quote_volume_24h, bid_price, ask_price, spread_percent,
              is_top_gainer, is_top_loser, matched_in_scan, selected_for_watchlist, trade_plan_created, simulated_trade_created,
              best_scan_run_id, best_scan_result_id, best_final_score, best_score_label, raw_payload, created_at, updated_at)

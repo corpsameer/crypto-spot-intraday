@@ -93,7 +93,7 @@ class MissedGainerAnalyzer:
             WHERE leaderboard_date = %s
               AND quote_filter = %s
               AND change_24h_percent >= %s
-            ORDER BY rank ASC
+            ORDER BY `rank` ASC
             LIMIT %s
             """,
             (analysis_date, quote_filter, min_change, limit),
