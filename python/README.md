@@ -763,3 +763,21 @@ Trade plan generation now runs a portfolio gate before creating active `pending`
 The gate checks whether portfolio simulation is enabled, whether an active portfolio account exists, current open simulated trades, pending trade plans, total open opportunities, duplicate symbols, symbol cooldown after recently closed trades, and available cash against the configured minimum trade capital. Candidates that fail the gate are stored as trade plans with `status = portfolio_rejected`, `portfolio_status = rejected`, and `portfolio_rejection_reason` for analytics; accepted candidates use `portfolio_status = approved` and continue through the normal pending trade-plan workflow.
 
 Task 45 is gate-only. It does **not** allocate capital, reserve cash, deduct cash, calculate quantity, place real orders, call private CoinDCX APIs, or add API keys. Capital allocation and reservation are intentionally deferred to Task 46.
+
+## Capital allocation to trade plans
+
+Approved portfolio-gated trade plans now receive an `allocated_capital` amount when the trade plan is created. Allocation is based on the selected candidate's score, `score_label`, and selection reason: fallback selections use the fallback bucket, strong scores use the strong bucket, watchlist-level scores use the watchlist bucket, and the remainder use the weak bucket. Each requested allocation is capped by the portfolio allocation settings and by tradable cash after the configured reserve-cash percentage is protected.
+
+Capital reservation happens at trade-plan creation time when `portfolio.reserve_capital_on_plan_creation` is enabled. The accounting convention is:
+
+- `current_cash` remains the gross simulated cash balance and is not reduced by reservation.
+- `reserved_cash` tracks cash committed to pending trade plans.
+- `available_cash` is calculated as `current_cash - reserved_cash`.
+- `deployed_capital` changes later when a plan enters a simulated trade.
+- `total_equity` is unchanged by reservation.
+
+A `capital_reserved` portfolio transaction is written once per reserved trade plan. The reservation path is idempotent: rerunning scans will not double-count an already reserved trade plan or create duplicate `capital_reserved` transactions for the same plan.
+
+Rejected gate candidates and allocation-rejected candidates stay unallocated. Allocation rejection moves the plan to `status = portfolio_rejected` with `portfolio_status = rejected` and a `portfolio_rejection_reason`, so realtime monitors do not treat the rejected plan as usable.
+
+Task 46 remains simulation-only. It does not create simulated trade quantity, carry capital into `simulated_trades`, calculate INR P&L, release capital on expiry or close, change close logic, call CoinDCX private APIs, use API keys, or place real orders. Capital carry-forward into simulated trades is intentionally deferred to Task 47, and capital release is handled by later tasks.
