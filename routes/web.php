@@ -10,6 +10,7 @@ use App\Http\Controllers\ScoreBucketAnalyticsController;
 use App\Http\Controllers\SetupTypeAnalyticsController;
 use App\Http\Controllers\TradePerformanceController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\SimulatedTradeController;
 use App\Http\Controllers\ScanResultController;
 use App\Http\Controllers\SpotSymbolController;
@@ -45,6 +46,7 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/simulated-trades/{simulatedTrade}', [SimulatedTradeController::class, 'show'])->name('simulated-trades.show');
         Route::get('/scans/{scanRun}', [ScanResultController::class, 'show'])->name('scans.show');
         Route::post('/spot-symbols/sync', [SpotSymbolController::class, 'sync'])->name('spot-symbols.sync');
+        Route::get('/system-health', [SystemHealthController::class, 'index'])->name('system-health.index');
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('/logout', LogoutController::class)->name('logout');
