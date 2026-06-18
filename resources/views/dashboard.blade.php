@@ -39,6 +39,7 @@
             <a class="secondary-button" href="{{ route('cryptospot.analytics.scanner-performance') }}">Scanner Analytics</a>
             <a class="secondary-button" href="{{ route('cryptospot.analytics.trade-performance') }}">Trade Analytics</a>
             <a class="secondary-button" href="{{ route('cryptospot.analytics.score-buckets') }}">Score Buckets</a>
+            <a class="secondary-button" href="{{ route('cryptospot.analytics.setup-types') }}">Setup Types</a>
             @if ($dashboard['latestHealth']->isNotEmpty())<a class="secondary-button" href="#system-health">System Health</a>@endif
         </div>
     </header>
