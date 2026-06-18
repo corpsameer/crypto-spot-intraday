@@ -78,6 +78,7 @@
             <a class="nav-link" href="{{ route('cryptospot.watchlist.index') }}">Watchlist</a>
             <a class="nav-link" href="{{ route('cryptospot.trade-plans.index') }}">Trade Plans</a>
             <a class="nav-link" href="{{ route('cryptospot.simulated-trades.index') }}">Simulated Trades</a>
+            <a class="nav-link" href="{{ route('cryptospot.daily-review.index') }}">Daily Review</a>
             <a class="nav-link" href="{{ route('cryptospot.daily-gainers.index') }}">Daily Gainers</a>
             <a class="nav-link" href="{{ route('cryptospot.missed-gainers.index') }}">Missed Gainers</a>
             <a class="nav-link" href="{{ route('cryptospot.analytics.scanner-performance') }}">Scanner Analytics</a>

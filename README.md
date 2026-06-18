@@ -207,6 +207,13 @@ cd python
 python scripts/run_daily_gainer_leaderboard_once.py --quote USDT --limit 100
 ```
 
+
+### Daily Review
+
+The read-only Daily Review page is available at `/cryptospot/daily-review` for logged-in users. It is a date-based operational review screen that combines scan runs, actual daily gainers, missed-gainer analysis, selected watchlist candidates, trade plans, simulated trades, trade events, and same-day system health logs.
+
+The page only reads existing Laravel database records. It does not run Python, call external APIs, control Supervisor, place orders, expose API keys, or change scanner/scoring/analyzer/trade logic.
+
 ### Missed gainer analyzer
 
 Task 31 adds a stored-data-only missed gainer analyzer. After the daily gainer leaderboard has been built, run the analyzer to classify actual top gainers against scanner capture, watchlist selection, trade plan creation, and simulated trade creation:
