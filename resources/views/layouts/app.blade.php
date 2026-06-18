@@ -84,6 +84,7 @@
             <a class="nav-link" href="{{ route('cryptospot.analytics.trade-performance') }}">Trade Analytics</a>
             <a class="nav-link" href="{{ route('cryptospot.analytics.score-buckets') }}">Score Buckets</a>
             <a class="nav-link" href="{{ route('cryptospot.analytics.setup-types') }}">Setup Types</a>
+            <a class="nav-link" href="{{ route('cryptospot.system-health.index') }}">System Health</a>
             <a class="nav-link" href="{{ route('cryptospot.settings.index') }}">Settings</a>
             <span>{{ auth()->user()->email }}</span>
             <form method="POST" action="{{ route('cryptospot.logout') }}">

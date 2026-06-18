@@ -401,3 +401,19 @@ LIMIT 20;
 ### Safety notes
 
 Task 39 does not add private CoinDCX API usage, API keys, real trading, order placement, continuous full-market scanning, Laravel-scheduled realtime monitors, or separately scheduled all-coin candle/orderbook/metrics/scoring collectors. It only schedules one-shot scan, daily leaderboard, missed-gainer analyzer, and cleanup wrappers.
+
+## System Health Page
+
+The read-only System Health page is available at `/cryptospot/system-health` for logged-in users. It helps monitor scheduled scans, daily analytics, missed-gainer analysis, retention cleanup, and realtime Supervisor-managed monitor freshness.
+
+The page reads `system_health_logs` plus database freshness timestamps from scan, watchlist, trade-plan, simulated-trade, trade-event, daily-gainer, and missed-gainer tables. It does not start, stop, restart, or execute Python, Supervisor, shell, CoinDCX API, private API, or trading actions.
+
+Useful operator commands to run manually on the server:
+
+```bash
+php artisan schedule:list
+sudo supervisorctl status cryptospot-realtime-monitors
+sudo tail -f /var/log/cryptospot/realtime-monitors.log
+tail -f storage/logs/cryptospot-scheduler.log
+tail -f storage/logs/laravel.log
+```
