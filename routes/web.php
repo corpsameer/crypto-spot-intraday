@@ -33,6 +33,7 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/simulated-trades', [SimulatedTradeController::class, 'index'])->name('simulated-trades.index');
         Route::get('/daily-gainers', [DailyGainerLeaderboardController::class, 'index'])->name('daily-gainers.index');
         Route::get('/missed-gainers', [MissedGainerController::class, 'index'])->name('missed-gainers.index');
+        Route::get('/missed-gainers/{missedGainer}', [MissedGainerController::class, 'show'])->name('missed-gainers.show');
         Route::get('/simulated-trades/{simulatedTrade}', [SimulatedTradeController::class, 'show'])->name('simulated-trades.show');
         Route::get('/scans/{scanRun}', [ScanResultController::class, 'show'])->name('scans.show');
         Route::post('/spot-symbols/sync', [SpotSymbolController::class, 'sync'])->name('spot-symbols.sync');

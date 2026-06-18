@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CandidateWatchlist;
+use App\Models\MissedGainer;
 use App\Models\ScanRun;
 use App\Models\SimulatedTrade;
 use App\Models\TradeEvent;
@@ -46,6 +47,9 @@ class DashboardController extends Controller
             'trade_event_count' => TradeEvent::query()->count(),
             'open_unrealized_pnl' => (float) SimulatedTrade::query()->whereIn('status', ['pending', 'active', 'tp1_hit', 'tp2_hit', 'trailing_active'])->sum('current_pnl_percent'),
             'latest_trade_event' => TradeEvent::query()->orderByDesc('event_time')->orderByDesc('id')->first(['coindcx_symbol', 'event_type', 'event_time']),
+            'today_critical_high_missed_gainers' => MissedGainer::query()->whereDate('analysis_date', now()->toDateString())->whereIn('miss_severity', ['critical', 'high'])->count(),
+            'today_captured_not_selected' => MissedGainer::query()->whereDate('analysis_date', now()->toDateString())->where('miss_type', 'captured_not_selected')->count(),
+            'today_missed_trade_created' => MissedGainer::query()->whereDate('analysis_date', now()->toDateString())->where('miss_type', 'captured_trade_created')->count(),
         ];
 
         return view('dashboard', compact('modules', 'latestScanRun', 'dashboardStats'));

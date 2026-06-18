@@ -17,6 +17,9 @@
         <article class="card metric-card"><span>Trade events</span><strong>{{ $dashboardStats['trade_event_count'] }}</strong></article>
         <article class="card metric-card"><span>Open unrealized P&amp;L</span><strong>{{ number_format((float) $dashboardStats['open_unrealized_pnl'], 2) }}%</strong></article>
         <article class="card metric-card"><span>Latest trade event</span><strong>{{ $dashboardStats['latest_trade_event'] ? $dashboardStats['latest_trade_event']->coindcx_symbol . ' / ' . $dashboardStats['latest_trade_event']->event_type . ' / ' . optional($dashboardStats['latest_trade_event']->event_time)->format('Y-m-d H:i') : '-' }}</strong></article>
+        <article class="card metric-card"><span>Today's critical/high missed gainers</span><strong>{{ $dashboardStats['today_critical_high_missed_gainers'] }}</strong></article>
+        <article class="card metric-card"><span>Today's captured not selected</span><strong>{{ $dashboardStats['today_captured_not_selected'] }}</strong></article>
+        <article class="card metric-card"><span>Today's trade-created gainers</span><strong>{{ $dashboardStats['today_missed_trade_created'] }}</strong></article>
     </section>
 
     <section class="grid" aria-label="Future modules">
