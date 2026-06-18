@@ -264,3 +264,140 @@ deploy/scripts/cryptospot-supervisor-stop.sh
 ```
 
 The Supervisor template at `deploy/supervisor/cryptospot-realtime-monitors.conf.example` uses `/var/www/crypto-spot-intraday/python` and `/var/www/crypto-spot-intraday/python/venv/bin/python` as example VPS paths. Adjust those values if your deployment path differs. Do not store secrets or DB credentials in Supervisor config; keep using the project environment files.
+
+## Task 39 Laravel scheduled scan cron
+
+Task 39 locks the MVP into a scheduled/manual scan workflow. The Laravel scheduler runs only one-shot Artisan wrappers around existing Python scripts; the realtime monitor loop remains Supervisor-managed from Task 38 and is not scheduled in Laravel.
+
+### Artisan command wrappers
+
+From the Laravel project root:
+
+```bash
+php artisan cryptospot:scan
+php artisan cryptospot:daily-gainers
+php artisan cryptospot:missed-gainers
+php artisan cryptospot:cleanup
+```
+
+The commands call these existing Python scripts from the configured Python working directory:
+
+- `cryptospot:scan` calls `scripts/run_manual_scan_once.py` to run one full scan pipeline.
+- `cryptospot:daily-gainers` calls `scripts/run_daily_gainer_leaderboard_once.py --quote USDT --limit 100` by default.
+- `cryptospot:missed-gainers` calls `scripts/run_missed_gainer_analyzer_once.py --quote USDT --min-change 10 --limit 100` by default.
+- `cryptospot:cleanup` calls `scripts/run_data_cleanup_once.py` to run the retention cleanup once.
+
+The scan command runs the existing scan pipeline as a one-shot process. It does not schedule separate all-coin ticker, candle, orderbook, metrics, or scoring jobs.
+
+### Environment values
+
+Local defaults:
+
+```bash
+CRYPTOSPOT_PYTHON_BINARY=python
+CRYPTOSPOT_PYTHON_DIR=python
+CRYPTOSPOT_QUOTE_FILTER=USDT
+CRYPTOSPOT_DAILY_GAINER_LIMIT=100
+CRYPTOSPOT_MISSED_GAINER_MIN_CHANGE=10
+CRYPTOSPOT_MISSED_GAINER_LIMIT=100
+```
+
+VPS example:
+
+```bash
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://gainforge.in/cryptospot
+CRYPTOSPOT_PYTHON_BINARY=/var/www/crypto-spot-intraday/python/venv/bin/python
+CRYPTOSPOT_PYTHON_DIR=/var/www/crypto-spot-intraday/python
+CRYPTOSPOT_QUOTE_FILTER=USDT
+CRYPTOSPOT_DAILY_GAINER_LIMIT=100
+CRYPTOSPOT_MISSED_GAINER_MIN_CHANGE=10
+CRYPTOSPOT_MISSED_GAINER_LIMIT=100
+```
+
+Adjust the `/var/www/crypto-spot-intraday` path if the project is deployed elsewhere.
+
+### Locked Laravel scheduler
+
+The schedule uses the `Asia/Kolkata` timezone and writes scheduler command output to `storage/logs/cryptospot-scheduler.log`.
+
+- Full scan: hourly at minute `00` (`00:00` through `23:00` IST), with a 60-minute overlap lock.
+- Daily gainer leaderboard: every 4 hours at minute `15` (`15 */4 * * *`), with a 30-minute overlap lock.
+- Missed gainer analyzer: every 4 hours at minute `20` (`20 */4 * * *`), with a 30-minute overlap lock.
+- Retention cleanup: daily at `03:30` IST, with a 60-minute overlap lock.
+
+The realtime monitor remains separate and Supervisor-only:
+
+```bash
+sudo supervisorctl status cryptospot-realtime-monitors
+```
+
+### VPS cron setup
+
+Linux cron should invoke Laravel's scheduler every minute:
+
+```bash
+crontab -e
+```
+
+Add:
+
+```cron
+* * * * * cd /var/www/crypto-spot-intraday && php artisan schedule:run >> /dev/null 2>&1
+```
+
+For local Windows development, run individual commands manually or test scheduler dispatch with:
+
+```bash
+php artisan schedule:run
+```
+
+### Deployment verification
+
+```bash
+cd /var/www/crypto-spot-intraday
+php artisan optimize:clear
+php artisan list | grep cryptospot
+php artisan schedule:list
+php artisan cryptospot:scan
+php artisan cryptospot:daily-gainers
+php artisan cryptospot:missed-gainers
+php artisan cryptospot:cleanup
+tail -f storage/logs/cryptospot-scheduler.log
+tail -f storage/logs/laravel.log
+```
+
+Useful database checks after manual runs:
+
+```sql
+SELECT id, status, started_at, finished_at
+FROM scan_runs
+ORDER BY id DESC
+LIMIT 5;
+
+SELECT leaderboard_date, quote_filter, COUNT(*) cnt
+FROM daily_gainer_leaderboard
+GROUP BY leaderboard_date, quote_filter
+ORDER BY leaderboard_date DESC;
+
+SELECT analysis_date, COUNT(*) cnt
+FROM missed_gainers
+GROUP BY analysis_date
+ORDER BY analysis_date DESC;
+
+SELECT service_name, status, message, checked_at
+FROM system_health_logs
+WHERE service_name IN (
+    'scan_runner',
+    'daily_gainer_leaderboard',
+    'missed_gainer_analyzer',
+    'retention_cleanup'
+)
+ORDER BY checked_at DESC
+LIMIT 20;
+```
+
+### Safety notes
+
+Task 39 does not add private CoinDCX API usage, API keys, real trading, order placement, continuous full-market scanning, Laravel-scheduled realtime monitors, or separately scheduled all-coin candle/orderbook/metrics/scoring collectors. It only schedules one-shot scan, daily leaderboard, missed-gainer analyzer, and cleanup wrappers.
