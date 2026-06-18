@@ -66,6 +66,17 @@ class SimulatedTrade extends Model
         'score_label',
         'entry_strategy',
         'notes',
+        'portfolio_account_id',
+        'allocated_capital',
+        'allocation_percent',
+        'entry_value',
+        'current_value',
+        'close_value',
+        'unrealized_pnl_amount',
+        'realized_pnl_amount',
+        'fees_amount',
+        'net_pnl_amount',
+        'capital_released_at',
         'raw_payload',
     ];
 
@@ -109,6 +120,16 @@ class SimulatedTrade extends Model
             'current_gain_percent' => 'decimal:4',
             'final_pnl_percent' => 'decimal:4',
             'score' => 'decimal:4',
+            'allocated_capital' => 'decimal:2',
+            'allocation_percent' => 'decimal:4',
+            'entry_value' => 'decimal:2',
+            'current_value' => 'decimal:2',
+            'close_value' => 'decimal:2',
+            'unrealized_pnl_amount' => 'decimal:2',
+            'realized_pnl_amount' => 'decimal:2',
+            'fees_amount' => 'decimal:2',
+            'net_pnl_amount' => 'decimal:2',
+            'capital_released_at' => 'datetime',
         ];
     }
 
@@ -120,4 +141,5 @@ class SimulatedTrade extends Model
     public function scannerMetric(): BelongsTo { return $this->belongsTo(ScannerMetric::class); }
     public function events(): HasMany { return $this->hasMany(TradeEvent::class); }
     public function tradeEvents(): HasMany { return $this->events(); }
+    public function portfolioAccount(): BelongsTo { return $this->belongsTo(PortfolioAccount::class); }
 }

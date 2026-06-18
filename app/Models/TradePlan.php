@@ -42,6 +42,10 @@ class TradePlan extends Model
             'lowest_price_seen' => 'decimal:12',
             'max_plan_gain_percent' => 'decimal:4',
             'max_plan_drawdown_percent' => 'decimal:4',
+            'allocated_capital' => 'decimal:2',
+            'allocation_percent' => 'decimal:4',
+            'capital_reserved_at' => 'datetime',
+            'capital_released_at' => 'datetime',
         ];
     }
 
@@ -52,4 +56,5 @@ class TradePlan extends Model
     public function simulatedTrade(): HasOne { return $this->hasOne(SimulatedTrade::class); }
     public function linkedSimulatedTrade(): BelongsTo { return $this->belongsTo(SimulatedTrade::class, 'simulated_trade_id'); }
     public function tradeEvents(): HasMany { return $this->hasMany(TradeEvent::class); }
+    public function portfolioAccount(): BelongsTo { return $this->belongsTo(PortfolioAccount::class); }
 }
