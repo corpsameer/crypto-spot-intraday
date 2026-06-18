@@ -34,6 +34,7 @@
             <a class="secondary-button" href="{{ route('cryptospot.scans.latest') }}">Latest Scanner</a>
             <a class="secondary-button" href="{{ route('cryptospot.trade-plans.index') }}">Watchlist / Trade Plans</a>
             <a class="secondary-button" href="{{ route('cryptospot.simulated-trades.index') }}">Simulated Trades</a>
+            <a class="secondary-button" href="{{ route('cryptospot.daily-review.index') }}">Daily Review</a>
             <a class="secondary-button" href="{{ route('cryptospot.daily-gainers.index') }}">Daily Gainers</a>
             <a class="secondary-button" href="{{ route('cryptospot.missed-gainers.index') }}">Missed Gainers</a>
             <a class="secondary-button" href="{{ route('cryptospot.analytics.scanner-performance') }}">Scanner Analytics</a>
