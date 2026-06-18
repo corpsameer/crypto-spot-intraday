@@ -37,6 +37,7 @@
             <a class="secondary-button" href="{{ route('cryptospot.daily-gainers.index') }}">Daily Gainers</a>
             <a class="secondary-button" href="{{ route('cryptospot.missed-gainers.index') }}">Missed Gainers</a>
             <a class="secondary-button" href="{{ route('cryptospot.analytics.scanner-performance') }}">Scanner Analytics</a>
+            <a class="secondary-button" href="{{ route('cryptospot.analytics.trade-performance') }}">Trade Analytics</a>
             @if ($dashboard['latestHealth']->isNotEmpty())<a class="secondary-button" href="#system-health">System Health</a>@endif
         </div>
     </header>
