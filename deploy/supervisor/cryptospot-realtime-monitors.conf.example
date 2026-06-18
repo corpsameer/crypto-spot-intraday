@@ -1,0 +1,17 @@
+[program:cryptospot-realtime-monitors]
+process_name=%(program_name)s
+directory=/var/www/crypto-spot-intraday/python
+command=/var/www/crypto-spot-intraday/python/venv/bin/python /var/www/crypto-spot-intraday/python/scripts/run_realtime_monitors_loop.py --interval 15 --limit 100
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+stopwaitsecs=30
+killasgroup=true
+stopasgroup=true
+user=www-data
+redirect_stderr=true
+stdout_logfile=/var/log/cryptospot/realtime-monitors.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=10
+environment=PYTHONUNBUFFERED="1"

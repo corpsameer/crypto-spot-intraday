@@ -217,3 +217,50 @@ python scripts/run_missed_gainer_analyzer_once.py --quote USDT --min-change 10 -
 ```
 
 The analyzer populates `missed_gainers`, writes `missed_gainer_analyzer` health logs, and does not call CoinDCX APIs, fetch market data, create trades, or place real orders.
+
+## Realtime monitor Supervisor setup
+
+Task 38 adds production-safe Supervisor files for keeping only lightweight candidate/trade monitors alive on a VPS. Full-market scans remain manual or scheduled separately and should not be run continuously by Supervisor. The realtime process does not scan all coins continuously, does not run all-coin candle collection, does not poll all-coin orderbooks, does not run the daily gainer leaderboard, and does not run the missed gainer analyzer.
+
+The combined Python loop is:
+
+```bash
+cd python
+python scripts/run_realtime_monitors_loop.py --interval 15 --limit 100
+```
+
+It runs the existing monitors in this order: trade plan trigger checking, breakout conversion, pullback conversion, active simulated trade price updates, TP/SL event logging, trailing handling, and expiry handling. The process is simulation-only and adds no private CoinDCX APIs, API keys, real trading, or order placement logic.
+
+Local one-cycle test:
+
+```bash
+cd python
+python scripts/run_realtime_monitors_loop.py --once --interval 5 --limit 50
+```
+
+Install and enable Supervisor on a VPS:
+
+```bash
+sudo apt update
+sudo apt install supervisor -y
+sudo cp deploy/supervisor/cryptospot-realtime-monitors.conf.example /etc/supervisor/conf.d/cryptospot-realtime-monitors.conf
+sudo nano /etc/supervisor/conf.d/cryptospot-realtime-monitors.conf
+sudo mkdir -p /var/log/cryptospot
+sudo chown -R www-data:www-data /var/log/cryptospot
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start cryptospot-realtime-monitors
+sudo supervisorctl status cryptospot-realtime-monitors
+sudo tail -f /var/log/cryptospot/realtime-monitors.log
+```
+
+Helper scripts:
+
+```bash
+chmod +x deploy/scripts/cryptospot-supervisor-*.sh
+deploy/scripts/cryptospot-supervisor-status.sh
+deploy/scripts/cryptospot-supervisor-restart.sh
+deploy/scripts/cryptospot-supervisor-stop.sh
+```
+
+The Supervisor template at `deploy/supervisor/cryptospot-realtime-monitors.conf.example` uses `/var/www/crypto-spot-intraday/python` and `/var/www/crypto-spot-intraday/python/venv/bin/python` as example VPS paths. Adjust those values if your deployment path differs. Do not store secrets or DB credentials in Supervisor config; keep using the project environment files.
