@@ -56,6 +56,37 @@ class AppSettingSeeder extends Seeder
             ['trade_plan.default_tp1_percent', '5', 'decimal', 'trade_plan', true, 'Default TP1 %', 'Default take profit 1 percentage from entry.'],
             ['trade_plan.default_tp2_percent', '10', 'decimal', 'trade_plan', true, 'Default TP2 %', 'Default take profit 2 percentage from entry.'],
             ['trade_plan.default_sl_percent', '-4', 'decimal', 'trade_plan', true, 'Default SL %', 'Default stop loss percentage from entry.'],
+
+            ['portfolio.enabled', 'true', 'boolean', 'portfolio', true, 'Enable Portfolio Simulation', 'Enables capital-aware paper portfolio simulation.'],
+            ['portfolio.default_account_name', 'Default INR Portfolio', 'string', 'portfolio', true, 'Default Portfolio Account', 'Name of the active portfolio account used for simulation.'],
+            ['portfolio.currency', 'INR', 'string', 'portfolio', true, 'Portfolio Currency', 'Currency used for paper capital tracking.'],
+            ['portfolio.starting_capital', '100000', 'decimal', 'portfolio', true, 'Starting Capital', 'Default paper capital for INR portfolio simulation.'],
+            ['portfolio.max_open_trades', '3', 'integer', 'portfolio', true, 'Max Open Trades', 'Maximum number of open simulated trades at a time.'],
+            ['portfolio.preferred_open_trades', '2', 'integer', 'portfolio', true, 'Preferred Open Trades', 'Preferred number of open trades before becoming conservative.'],
+            ['portfolio.max_pending_trade_plans', '3', 'integer', 'portfolio', true, 'Max Pending Trade Plans', 'Maximum number of pending/watching trade plans allowed at a time.'],
+            ['portfolio.max_total_open_opportunities', '3', 'integer', 'portfolio', true, 'Max Open Opportunities', 'Maximum open trades plus pending trade plans combined.'],
+            ['portfolio.reserve_cash_percent', '10', 'decimal', 'portfolio', true, 'Reserve Cash %', 'Percentage of portfolio kept as cash reserve.'],
+            ['portfolio.min_trade_capital', '10000', 'decimal', 'portfolio', true, 'Minimum Trade Capital', 'Minimum INR allocation required to create a trade plan.'],
+            ['portfolio.max_trade_capital', '40000', 'decimal', 'portfolio', true, 'Maximum Trade Capital', 'Maximum INR allocation allowed for one trade.'],
+            ['portfolio.strong_score_min', '70', 'decimal', 'portfolio', true, 'Strong Score Minimum', 'Minimum score for strongest capital allocation bucket.'],
+            ['portfolio.watchlist_score_min', '50', 'decimal', 'portfolio', true, 'Watchlist Score Minimum', 'Minimum score for normal watchlist allocation bucket.'],
+            ['portfolio.strong_allocation_capital', '40000', 'decimal', 'portfolio', true, 'Strong Allocation Capital', 'Preferred INR allocation for strong candidates.'],
+            ['portfolio.watchlist_allocation_capital', '30000', 'decimal', 'portfolio', true, 'Watchlist Allocation Capital', 'Preferred INR allocation for watchlist candidates.'],
+            ['portfolio.weak_allocation_capital', '20000', 'decimal', 'portfolio', true, 'Weak/Fallback Allocation Capital', 'Preferred INR allocation for weak or fallback candidates.'],
+            ['portfolio.fallback_allocation_capital', '15000', 'decimal', 'portfolio', true, 'Fallback Allocation Capital', 'Preferred INR allocation for fallback-selected candidates.'],
+            ['portfolio.prevent_duplicate_symbol', 'true', 'boolean', 'portfolio', true, 'Prevent Duplicate Symbol', 'Prevents multiple active opportunities for the same symbol.'],
+            ['portfolio.symbol_cooldown_hours', '24', 'integer', 'portfolio', true, 'Symbol Cooldown Hours', 'Number of hours before same symbol can be planned again after a trade closes.'],
+            ['portfolio.cooldown_after_sl_hours', '24', 'integer', 'portfolio', true, 'Cooldown After SL Hours', 'Cooldown for a symbol after stop-loss close.'],
+            ['portfolio.cooldown_after_win_hours', '12', 'integer', 'portfolio', true, 'Cooldown After Winning Close Hours', 'Cooldown for a symbol after trailing/positive close.'],
+            ['portfolio.cooldown_after_expiry_hours', '6', 'integer', 'portfolio', true, 'Cooldown After Expiry Hours', 'Cooldown for a symbol after untriggered/expired opportunity.'],
+            ['portfolio.reserve_capital_on_plan_creation', 'true', 'boolean', 'portfolio', true, 'Reserve Capital On Plan Creation', 'Reserves allocated capital when trade plan is created.'],
+            ['portfolio.release_capital_on_plan_expiry', 'true', 'boolean', 'portfolio', true, 'Release Capital On Plan Expiry', 'Releases reserved capital when trade plan expires without entry.'],
+            ['portfolio.include_pending_plans_in_capital_check', 'true', 'boolean', 'portfolio', true, 'Include Pending Plans In Capital Check', 'Counts pending plans as reserved opportunities.'],
+            ['portfolio.allow_multiple_strategies_same_symbol', 'false', 'boolean', 'portfolio', true, 'Allow Multiple Strategies Same Symbol', 'Allows both breakout and pullback plan for same symbol if true. Recommended false.'],
+            ['portfolio.paper_fees_enabled', 'false', 'boolean', 'portfolio', true, 'Enable Paper Fees', 'Enables simulated fee deduction later.'],
+            ['portfolio.paper_fee_percent', '0', 'decimal', 'portfolio', true, 'Paper Fee %', 'Fee percentage for paper simulation. Kept zero for initial MVP.'],
+            ['portfolio.monthly_growth_tracking_enabled', 'true', 'boolean', 'portfolio', true, 'Monthly Growth Tracking', 'Enables monthly growth analytics based on portfolio equity.'],
+            ['portfolio.reset_allowed', 'false', 'boolean', 'portfolio', false, 'Portfolio Reset Allowed', 'Safety flag. Reset actions should not be allowed in production unless enabled.'],
             ['system.exchange', 'coindcx', 'string', 'system', false], ['system.market_type', 'spot', 'string', 'system', false], ['system.real_trading_enabled', 'false', 'boolean', 'system', false],
             ['retention.candles_1m_days', '3', 'integer', 'retention', true, '1m candle retention days', 'Delete 1m candle rows older than this many days.'],
             ['retention.candles_5m_days', '7', 'integer', 'retention', true, '5m candle retention days', 'Delete 5m candle rows older than this many days.'],
@@ -69,10 +100,12 @@ class AppSettingSeeder extends Seeder
 
         foreach ($settings as $setting) {
             [$key, $value, $type, $group, $editable, $label, $description] = $setting + [4 => true, 5 => null, 6 => null];
+            $existing = AppSetting::where('key', $key)->first();
+
             AppSetting::updateOrCreate(
                 ['key' => $key],
                 [
-                    'value' => $value,
+                    'value' => $existing?->value ?? $value,
                     'value_type' => $type,
                     'group' => $group,
                     'label' => $label ?? Str::headline(Str::after($key, '.')),
