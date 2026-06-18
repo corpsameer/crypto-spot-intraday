@@ -755,3 +755,11 @@ LIMIT 30;
 ```
 
 Safety reminders: the Supervisor process is simulation-only. It does not place real orders, does not use CoinDCX private APIs, does not need API keys, and does not add real trading or order placement logic.
+
+## Portfolio gate
+
+Trade plan generation now runs a portfolio gate before creating active `pending` or `watching` trade plans. The gate is applied after scan results are selected for the watchlist and before each candidate plan is persisted, so the scan flow remains `scan_run -> scan_results -> candidate_watchlist -> trade_plan -> simulated_trade -> trade_events -> analytics` while preventing unrealistic duplicate opportunities.
+
+The gate checks whether portfolio simulation is enabled, whether an active portfolio account exists, current open simulated trades, pending trade plans, total open opportunities, duplicate symbols, symbol cooldown after recently closed trades, and available cash against the configured minimum trade capital. Candidates that fail the gate are stored as trade plans with `status = portfolio_rejected`, `portfolio_status = rejected`, and `portfolio_rejection_reason` for analytics; accepted candidates use `portfolio_status = approved` and continue through the normal pending trade-plan workflow.
+
+Task 45 is gate-only. It does **not** allocate capital, reserve cash, deduct cash, calculate quantity, place real orders, call private CoinDCX APIs, or add API keys. Capital allocation and reservation are intentionally deferred to Task 46.

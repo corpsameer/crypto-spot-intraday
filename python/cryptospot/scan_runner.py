@@ -366,6 +366,10 @@ class ScanRunner:
                 "pullback_plans": trade_plan_summary.get("pullback_plans", 0),
                 "skipped": trade_plan_summary.get("skipped", 0),
                 "errors": trade_plan_summary.get("errors", []),
+                "portfolio_enabled": trade_plan_summary.get("portfolio_enabled", True),
+                "portfolio_approved": trade_plan_summary.get("portfolio_approved", 0),
+                "portfolio_rejected": trade_plan_summary.get("portfolio_rejected", 0),
+                "portfolio_rejection_reasons": trade_plan_summary.get("portfolio_rejection_reasons", {}),
             }
             if trade_plan_summary.get("errors"):
                 summary["errors"].extend([f"Trade plans: {error}" for error in trade_plan_summary.get("errors", [])])

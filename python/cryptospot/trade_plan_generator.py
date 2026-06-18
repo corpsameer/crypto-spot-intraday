@@ -6,6 +6,7 @@ from typing import Any
 from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
+from cryptospot.portfolio_gate import PortfolioGate
 from cryptospot.settings import get_setting
 
 SERVICE_NAME = "trade_plan_generator"
@@ -57,6 +58,10 @@ class TradePlanGenerator:
             "pullback_plans": 0,
             "skipped": 0,
             "errors": [],
+            "portfolio_enabled": True,
+            "portfolio_approved": 0,
+            "portfolio_rejected": 0,
+            "portfolio_rejection_reasons": {},
         }
         try:
             if not self._setting_bool("scan.create_trade_plans", DEFAULTS["scan.create_trade_plans"]):
@@ -84,6 +89,9 @@ class TradePlanGenerator:
                 rows = rows[: max(int(limit), 0)]
 
             settings = self._load_plan_settings()
+            portfolio_gate = PortfolioGate(settings_reader=get_setting)
+            portfolio_state = portfolio_gate.get_portfolio_state()
+            summary["portfolio_enabled"] = bool(portfolio_state.get("settings", {}).get("enabled", True))
             for row in rows:
                 symbol = row.get("coindcx_symbol") or row.get("scan_result_id")
                 try:
@@ -93,16 +101,25 @@ class TradePlanGenerator:
 
                     primary_plan_id = None
                     for plan in self._plans_for_row(row, reference_price, settings):
+                        gate_result = portfolio_gate.evaluate_candidate(self._candidate_for_gate(row, plan))
+                        plan = self._apply_portfolio_gate(plan, gate_result)
                         plan_id, action = self._upsert_plan(row, plan, columns)
                         if action == "created":
                             summary["plans_created"] += 1
                         else:
                             summary["plans_updated"] += 1
-                        if plan["entry_strategy"] == "breakout":
-                            summary["breakout_plans"] += 1
-                            primary_plan_id = plan_id
-                        elif plan["entry_strategy"] == "pullback":
-                            summary["pullback_plans"] += 1
+
+                        if gate_result.get("approved"):
+                            summary["portfolio_approved"] += 1
+                            if plan["entry_strategy"] == "breakout":
+                                summary["breakout_plans"] += 1
+                                primary_plan_id = plan_id
+                            elif plan["entry_strategy"] == "pullback":
+                                summary["pullback_plans"] += 1
+                        else:
+                            summary["portfolio_rejected"] += 1
+                            reason = gate_result.get("reason") or "portfolio_rejected_unknown_error"
+                            summary["portfolio_rejection_reasons"][reason] = summary["portfolio_rejection_reasons"].get(reason, 0) + 1
                     if primary_plan_id:
                         self._link_scan_result(row["scan_result_id"], primary_plan_id)
                         summary["linked"] += 1
@@ -253,6 +270,37 @@ class TradePlanGenerator:
 
     def _is_extended(self, row):
         return (safe_float(row.get("change_15m_percent"), 0) >= 3 or safe_float(row.get("distance_from_24h_high_percent"), 999) <= 1 or safe_float(row.get("overextension_risk"), 0) >= 40)
+
+    def _candidate_for_gate(self, row, plan):
+        return {
+            "coindcx_symbol": row.get("coindcx_symbol"),
+            "score": row.get("final_score"),
+            "final_score": row.get("final_score"),
+            "score_label": row.get("score_label"),
+            "selected_reason": row.get("selection_reason"),
+            "selection_type": row.get("selection_type"),
+            "entry_strategy": plan.get("entry_strategy"),
+            "scan_result_id": row.get("scan_result_id"),
+            "candidate_watchlist_id": row.get("candidate_watchlist_id"),
+            "spot_symbol_id": row.get("spot_symbol_id"),
+        }
+
+    def _apply_portfolio_gate(self, plan, gate_result):
+        raw_payload = self._loads(plan.get("raw_payload"))
+        raw_payload["portfolio_gate"] = gate_result
+        plan["raw_payload"] = json.dumps(raw_payload, separators=(",", ":"), default=json_default)
+        plan["portfolio_account_id"] = gate_result.get("portfolio_account_id")
+        plan["portfolio_status"] = gate_result.get("portfolio_status")
+        plan["portfolio_notes"] = json.dumps(gate_result.get("details", {}), separators=(",", ":"), default=json_default)
+        plan["allocated_capital"] = None
+        plan["allocation_percent"] = None
+        if gate_result.get("approved"):
+            plan["portfolio_rejection_reason"] = None
+            return plan
+        plan["status"] = "portfolio_rejected"
+        plan["portfolio_rejection_reason"] = gate_result.get("reason") or "portfolio_rejected_unknown_error"
+        plan["rejection_reason"] = plan["portfolio_rejection_reason"]
+        return plan
 
     def _load_plan_settings(self):
         return {
