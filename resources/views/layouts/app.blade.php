@@ -66,6 +66,14 @@
         h2 { margin-top: 0; }
         .section-card h2 { margin-bottom: .75rem; }
         pre { background: #111827; border-radius: .5rem; color: #e5e7eb; max-width: 520px; overflow: auto; padding: .75rem; white-space: pre-wrap; }
+        .pagination { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-top: 1rem; }
+        .pagination__summary { color: #6b7280; font-size: .875rem; }
+        .pagination__list { align-items: center; display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; margin: 0; padding: 0; }
+        .pagination__link { background: #fff; border: 1px solid #d1d5db; border-radius: .375rem; color: #2563eb; display: inline-flex; font-size: .875rem; font-weight: 700; line-height: 1; padding: .55rem .7rem; text-decoration: none; }
+        .pagination__link--active { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .pagination__link--disabled { color: #9ca3af; cursor: not-allowed; }
+        .pagination svg, nav[role="navigation"] svg { height: 1rem; width: 1rem; }
+        @media (max-width: 640px) { .pagination { align-items: flex-start; flex-direction: column; } }
     </style>
 </head>
 <body>
