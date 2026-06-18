@@ -661,3 +661,97 @@ Optional date-specific run:
 ```bash
 python scripts/run_missed_gainer_analyzer_once.py --date 2026-06-17 --quote USDT --min-change 10 --limit 100
 ```
+
+## Realtime monitor Supervisor loop
+
+Task 38 adds a single lightweight realtime monitor loop for VPS Supervisor. It keeps only candidate/trade monitoring processes alive between scheduled or manual full-market scans. Full scans remain manual or scheduled separately; this loop does not run the scan runner, does not continuously collect all-coin candles, does not poll all-coin orderbooks, does not build the daily gainer leaderboard, and does not run the missed gainer analyzer.
+
+The combined process runs these existing simulation monitors in order each cycle:
+
+1. `TradePlanTriggerMonitor` checks only pending/watching `trade_plans`.
+2. `BreakoutEntrySimulator` converts triggered breakout plans to simulated trades.
+3. `PullbackEntrySimulator` converts triggered pullback plans to simulated trades.
+4. `ActiveTradeMonitor` updates only open `simulated_trades`.
+5. `TradeEventMonitor` logs TP1/TP2/SL events from stored latest prices.
+6. `TrailingMonitor` handles trailing behavior after TP2.
+7. `TradeExpiryMonitor` closes expired open simulated trades.
+
+Run one local acceptance cycle from inside the `python` folder:
+
+```bash
+python scripts/run_realtime_monitors_loop.py --once --interval 5 --limit 50
+```
+
+Run a short local loop test, then stop with `Ctrl+C`:
+
+```bash
+python scripts/run_realtime_monitors_loop.py --interval 10 --limit 50
+```
+
+The script supports optional skip flags for operational testing: `--skip-plan-trigger`, `--skip-entry-simulators`, `--skip-active-trade`, `--skip-events`, `--skip-trailing`, and `--skip-expiry`. If `--interval` is not supplied, it reads `monitor.active_trade_refresh_seconds` and falls back to 15 seconds.
+
+Each monitor failure is caught and printed as a compact JSON error so the next monitor can continue. Startup/import failures exit with code `1`; normal completion, `--once`, and `Ctrl+C` exit with code `0`.
+
+### VPS Supervisor setup
+
+The Supervisor template is located at:
+
+```text
+deploy/supervisor/cryptospot-realtime-monitors.conf.example
+```
+
+It is an example only. Adjust the project path, virtualenv path, and `user` for your VPS if they differ. Do not put secrets, DB credentials, CoinDCX API keys, or private API settings in the Supervisor file; Python should continue reading project `.env` files as already implemented.
+
+Install and enable Supervisor on Ubuntu/Debian VPS:
+
+```bash
+sudo apt update
+sudo apt install supervisor -y
+sudo cp deploy/supervisor/cryptospot-realtime-monitors.conf.example /etc/supervisor/conf.d/cryptospot-realtime-monitors.conf
+sudo nano /etc/supervisor/conf.d/cryptospot-realtime-monitors.conf
+sudo mkdir -p /var/log/cryptospot
+sudo chown -R www-data:www-data /var/log/cryptospot
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start cryptospot-realtime-monitors
+sudo supervisorctl status cryptospot-realtime-monitors
+sudo tail -f /var/log/cryptospot/realtime-monitors.log
+```
+
+Restart or stop later with:
+
+```bash
+sudo supervisorctl restart cryptospot-realtime-monitors
+sudo supervisorctl stop cryptospot-realtime-monitors
+```
+
+Optional helper scripts are available from the project root:
+
+```bash
+chmod +x deploy/scripts/cryptospot-supervisor-*.sh
+deploy/scripts/cryptospot-supervisor-status.sh
+deploy/scripts/cryptospot-supervisor-restart.sh
+deploy/scripts/cryptospot-supervisor-stop.sh
+```
+
+### Health-log verification
+
+After the loop runs, verify monitor health rows in MySQL:
+
+```sql
+SELECT service_name, status, message, checked_at
+FROM system_health_logs
+WHERE service_name IN (
+    'trade_plan_trigger_monitor',
+    'breakout_entry_simulator',
+    'pullback_entry_simulator',
+    'active_trade_monitor',
+    'trade_event_monitor',
+    'trailing_monitor',
+    'trade_expiry_monitor'
+)
+ORDER BY checked_at DESC
+LIMIT 30;
+```
+
+Safety reminders: the Supervisor process is simulation-only. It does not place real orders, does not use CoinDCX private APIs, does not need API keys, and does not add real trading or order placement logic.
