@@ -7,6 +7,7 @@ use App\Http\Controllers\DailyGainerLeaderboardController;
 use App\Http\Controllers\MissedGainerController;
 use App\Http\Controllers\ScannerPerformanceController;
 use App\Http\Controllers\ScoreBucketAnalyticsController;
+use App\Http\Controllers\SetupTypeAnalyticsController;
 use App\Http\Controllers\TradePerformanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SimulatedTradeController;
@@ -38,6 +39,7 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/analytics/scanner-performance', [ScannerPerformanceController::class, 'index'])->name('analytics.scanner-performance');
         Route::get('/analytics/trade-performance', [TradePerformanceController::class, 'index'])->name('analytics.trade-performance');
         Route::get('/analytics/score-buckets', [ScoreBucketAnalyticsController::class, 'index'])->name('analytics.score-buckets');
+        Route::get('/analytics/setup-types', [SetupTypeAnalyticsController::class, 'index'])->name('analytics.setup-types');
         Route::get('/missed-gainers', [MissedGainerController::class, 'index'])->name('missed-gainers.index');
         Route::get('/missed-gainers/{missedGainer}', [MissedGainerController::class, 'show'])->name('missed-gainers.show');
         Route::get('/simulated-trades/{simulatedTrade}', [SimulatedTradeController::class, 'show'])->name('simulated-trades.show');
