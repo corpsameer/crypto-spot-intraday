@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DailyGainerLeaderboardController;
 use App\Http\Controllers\DailyReviewController;
 use App\Http\Controllers\MissedGainerController;
+use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\ScannerPerformanceController;
 use App\Http\Controllers\ScoreBucketAnalyticsController;
 use App\Http\Controllers\SetupTypeAnalyticsController;
@@ -38,6 +39,7 @@ Route::prefix('cryptospot')->name('cryptospot.')->group(function (): void {
         Route::get('/trade-plans', [WatchlistController::class, 'tradePlans'])->name('trade-plans.index');
         Route::get('/simulated-trades', [SimulatedTradeController::class, 'index'])->name('simulated-trades.index');
         Route::get('/daily-review', [DailyReviewController::class, 'index'])->name('daily-review.index');
+        Route::get('/portfolio', [PortfolioController::class, 'index'])->name('portfolio.index');
         Route::get('/daily-gainers', [DailyGainerLeaderboardController::class, 'index'])->name('daily-gainers.index');
         Route::get('/analytics/scanner-performance', [ScannerPerformanceController::class, 'index'])->name('analytics.scanner-performance');
         Route::get('/analytics/trade-performance', [TradePerformanceController::class, 'index'])->name('analytics.trade-performance');
