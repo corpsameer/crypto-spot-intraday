@@ -11,6 +11,7 @@ from cryptospot.metrics_engine import MetricsEngine
 from cryptospot.prefilter_engine import PrefilterEngine
 from cryptospot.scan_liquidity_collector import ScanLiquidityCollector
 from cryptospot.scoring_engine import ScoringEngine
+from cryptospot.scan_cycle_expiry_manager import ScanCycleExpiryManager
 from cryptospot.trade_plan_generator import TradePlanGenerator
 from cryptospot.watchlist_candidate_engine import WatchlistCandidateEngine
 from cryptospot.settings import get_settings_by_group
@@ -159,6 +160,13 @@ class ScanRunner:
                 "skipped": 0,
                 "errors": [],
             },
+            "scan_cycle_expiry": {
+                "current_scan_run_id": None,
+                "watchlist_candidates_expired": 0,
+                "trade_plans_expired": 0,
+                "simulated_trades_expired": 0,
+                "errors": [],
+            },
             "watchlist": {
                 "eligible_scan_results": 0,
                 "created": 0,
@@ -215,6 +223,11 @@ class ScanRunner:
             run_uuid = str(uuid.uuid4())
             summary["run_uuid"] = run_uuid
             summary["scan_run_id"] = self._create_scan_run(run_uuid, summary["scan_name"], resolved_quote_filter, settings_snapshot)
+
+            summary["scan_cycle_expiry"] = ScanCycleExpiryManager().expire_previous_scan_opportunities(summary["scan_run_id"])
+            if summary["scan_cycle_expiry"].get("errors"):
+                summary["errors"].extend([f"Scan-cycle expiry: {error}" for error in summary["scan_cycle_expiry"].get("errors", [])])
+            self._merge_scan_run_raw_payload(summary["scan_run_id"], {"scan_cycle_expiry": summary["scan_cycle_expiry"]})
 
             try:
                 summary["market_context"] = MarketContextEngine().run(source="scan_runner", scan_run_id=summary["scan_run_id"], refresh_candles=True)

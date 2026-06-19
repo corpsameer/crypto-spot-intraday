@@ -184,7 +184,7 @@ class TradePlanGenerator:
             WHERE sr.scan_run_id = %s AND sr.status = 'scored' AND sr.selected_for_watchlist = 1
               AND sr.candidate_created = 1 AND sr.candidate_watchlist_id IS NOT NULL
               AND sr.spot_symbol_id IS NOT NULL AND sr.final_score IS NOT NULL
-              AND cw.status IN ('active', 'refreshed')
+              AND cw.status IN ('active', 'refreshed') AND cw.scan_run_id = sr.scan_run_id
             ORDER BY sr.selection_rank ASC, sr.final_score DESC, sr.id ASC
         """, (scan_run_id,))
 
@@ -253,9 +253,9 @@ class TradePlanGenerator:
     def _upsert_plan(self, row, plan, columns):
         existing = fetch_one("""
             SELECT id, raw_payload FROM trade_plans
-            WHERE candidate_watchlist_id = %s AND entry_strategy = %s AND status IN ('pending', 'watching')
+            WHERE candidate_watchlist_id = %s AND scan_run_id = %s AND entry_strategy = %s AND status IN ('pending', 'watching')
             ORDER BY updated_at DESC LIMIT 1
-        """, (row.get("candidate_watchlist_id"), plan.get("entry_strategy")))
+        """, (row.get("candidate_watchlist_id"), row.get("scan_run_id"), plan.get("entry_strategy")))
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if existing:
             payload = self._build_raw_payload(row, self._loads(plan["raw_payload"]).get("plan_calculation", {}), self._loads(existing.get("raw_payload")))

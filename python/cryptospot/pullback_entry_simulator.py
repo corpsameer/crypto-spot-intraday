@@ -111,8 +111,10 @@ class PullbackEntrySimulator:
             WHERE tp.status = 'triggered'
               AND tp.entry_strategy = 'pullback'
               AND tp.simulated_trade_id IS NULL
+              AND tp.converted_at IS NULL
               AND COALESCE(tp.portfolio_status, '') <> 'rejected'
-              AND tp.status <> 'portfolio_rejected'
+              AND tp.status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
+              AND NOT EXISTS (SELECT 1 FROM simulated_trades st WHERE st.trade_plan_id = tp.id LIMIT 1)
             ORDER BY tp.triggered_at ASC, tp.updated_at ASC
         """
         params = None

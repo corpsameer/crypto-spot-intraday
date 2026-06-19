@@ -16,7 +16,6 @@ try:
     from cryptospot.pullback_entry_simulator import PullbackEntrySimulator  # noqa: E402
     from cryptospot.settings import get_setting  # noqa: E402
     from cryptospot.trade_event_monitor import TradeEventMonitor  # noqa: E402
-    from cryptospot.trade_expiry_monitor import TradeExpiryMonitor  # noqa: E402
     from cryptospot.trade_plan_trigger_monitor import TradePlanTriggerMonitor  # noqa: E402
     from cryptospot.trailing_monitor import TrailingMonitor  # noqa: E402
 except Exception as exc:  # pragma: no cover - startup safety for CLI usage
@@ -67,9 +66,6 @@ def _build_monitors(args: argparse.Namespace) -> list[tuple[str, object]]:
         monitors.append(("trade_event_monitor", TradeEventMonitor()))
     if not args.skip_trailing:
         monitors.append(("trailing_monitor", TrailingMonitor()))
-    if not args.skip_expiry:
-        monitors.append(("trade_expiry_monitor", TradeExpiryMonitor()))
-
     return monitors
 
 
@@ -94,7 +90,6 @@ def main() -> int:
     parser.add_argument("--skip-active-trade", action="store_true", help="Skip active simulated trade price updates")
     parser.add_argument("--skip-events", action="store_true", help="Skip TP1/TP2/SL event logging")
     parser.add_argument("--skip-trailing", action="store_true", help="Skip trailing stop monitor")
-    parser.add_argument("--skip-expiry", action="store_true", help="Skip simulated trade expiry monitor")
     args = parser.parse_args()
 
     interval = args.interval if args.interval is not None else _default_interval()

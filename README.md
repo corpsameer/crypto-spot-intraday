@@ -167,7 +167,7 @@ Task 10.1 adds the database foundation for this workflow with these tables:
 - `scan_results` stores per-symbol scan outcomes, including prefilter status, copied metric fields, scoring placeholders, and suggested trade setup fields.
 - `trade_plans` stores pending scanner/manual trade setups before any simulated trade is triggered.
 
-Between full scans, the MVP should not continuously fetch candles, score every coin, or poll orderbooks for the full market. Later continuous processes may monitor only shortlisted candidates, pending trade plans, active simulated trades, and system health. Active simulated trades may be monitored continuously because TP, SL, trailing stops, and expiry can happen at any time.
+Between full scans, the MVP should not continuously fetch candles, score every coin, or poll orderbooks for the full market. Later continuous processes may monitor only shortlisted candidates, pending trade plans, active simulated trades, and system health. Active simulated trades may be monitored continuously because TP, SL, and trailing stops can happen at any time; simulated trades do not expire by time or scan cycle.
 
 This section documents schema support only. It does not add a scan runner, prefilter engine, scoring, candidate creation, trade-plan trigger monitoring, simulated trade creation, CoinDCX private APIs, API keys, or real trading.
 
@@ -472,3 +472,9 @@ python scripts/check_portfolio_settings.py
 ```
 
 These settings are intentionally not enforced until the portfolio gate tasks are implemented. Task 44 does not change trade plan generation, allocation, reservation, duplicate prevention, monitor behavior, scanner behavior, scoring behavior, private API usage, API key handling, or real trading behavior.
+
+## Scan-cycle opportunity expiry rules
+
+Watchlist candidates are valid only for the scan cycle that created them. Pending or watching trade plans are valid only until the next successful full scan creates a newer `scan_runs` row. When a new scan starts, `scan_cycle_expiry_manager` marks old unexecuted watchlist candidates and old unconverted pending/watching trade plans as `expired` with reason `new_scan_replaced`.
+
+Scan-cycle expiry never updates `simulated_trades`. Open simulated trades do not expire by time or by scan cycle; they close only through SL, TP/trailing, or a later manual-close workflow if implemented. Triggered trade plans are intentionally not expired by scan-cycle cleanup so the realtime entry simulators can convert them without a race. Reserved capital on expired untriggered plans is not released by this workflow and is deferred to a later portfolio release task.
