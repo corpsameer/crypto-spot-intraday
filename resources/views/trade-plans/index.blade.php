@@ -2,9 +2,11 @@
 
 @php
     $badge = fn ($value) => match ($value) {
-        'pending', 'watchlist' => 'badge-blue', 'watching' => 'badge-yellow', 'triggered', 'converted_to_trade', 'strong' => 'badge-green', 'expired' => 'badge-gray', 'cancelled', 'rejected' => 'badge-red', 'breakout' => 'badge-purple', 'pullback' => 'badge-orange', default => 'badge-gray',
+        'pending', 'watchlist' => 'badge-blue', 'watching' => 'badge-yellow', 'triggered', 'converted_to_trade', 'strong' => 'badge-green', 'expired' => 'badge-gray', 'capital_reserved' => 'badge-yellow', 'released' => 'badge-green', 'cancelled', 'rejected', 'portfolio_rejected' => 'badge-red', 'breakout' => 'badge-purple', 'pullback' => 'badge-orange', default => 'badge-gray',
     };
     $fmt = fn ($value, $decimals = 4) => $value === null || $value === '' ? '-' : number_format((float) $value, $decimals);
+    $inr = fn ($value) => $value === null || $value === '' ? '-' : '₹' . number_format((float) $value, 2);
+    $dt = fn ($value) => $value ? \Illuminate\Support\Carbon::parse($value)->format('Y-m-d H:i') : '-';
 @endphp
 
 @section('content')
@@ -40,7 +42,7 @@
             <p>No trade plans yet. Run a scan after Task 19.</p>
         @else
             <table class="table scanner-table">
-                <thead><tr><th>Symbol</th><th>Status</th><th>Strategy</th><th>Score</th><th>Score label</th><th>Reference</th><th>Trigger</th><th>Entry</th><th>TP1</th><th>TP2</th><th>SL</th><th>Risk/reward</th><th>Valid from</th><th>Expires at</th><th>Time to expiry</th><th>Source scan</th><th>Candidate</th><th>Actions/details</th></tr></thead>
+                <thead><tr><th>Symbol</th><th>Status</th><th>Strategy</th><th>Score</th><th>Score label</th><th>Portfolio</th><th>Allocated</th><th>Reserved at</th><th>Released at</th><th>Reference</th><th>Trigger</th><th>Entry</th><th>TP1</th><th>TP2</th><th>SL</th><th>Risk/reward</th><th>Valid from</th><th>Expires at</th><th>Time to expiry</th><th>Source scan</th><th>Candidate</th><th>Actions/details</th></tr></thead>
                 <tbody>
                     @foreach ($tradePlans as $plan)
                         <tr>
@@ -49,6 +51,10 @@
                             <td><span class="badge {{ $badge($plan->entry_strategy) }}">{{ $plan->entry_strategy }}</span></td>
                             <td>{{ $fmt($plan->score, 2) }}</td>
                             <td><span class="badge {{ $badge($plan->score_label) }}">{{ $plan->score_label ?: '-' }}</span></td>
+                            <td><span class="badge {{ $badge($plan->portfolio_status) }}">{{ $plan->portfolio_status ?: '-' }}</span></td>
+                            <td>{{ $inr($plan->allocated_capital) }}</td>
+                            <td class="nowrap">{{ $dt($plan->capital_reserved_at) }}</td>
+                            <td class="nowrap">{{ $dt($plan->capital_released_at) }}</td>
                             <td>{{ $fmt($plan->reference_price) }}</td><td>{{ $fmt($plan->trigger_price) }}</td><td>{{ $fmt($plan->entry_price) }}</td><td>{{ $fmt($plan->tp1_price) }}</td><td>{{ $fmt($plan->tp2_price) }}</td><td>{{ $fmt($plan->sl_price) }}</td><td>{{ $fmt($plan->risk_reward_ratio, 2) }}</td>
                             <td class="nowrap">{{ $plan->valid_from?->format('Y-m-d H:i') ?: '-' }}</td><td class="nowrap">{{ $plan->expires_at?->format('Y-m-d H:i') ?: '-' }}</td><td class="nowrap">{{ $plan->expires_at ? ($plan->expires_at->isPast() ? 'Expired' : $plan->expires_at->diffForHumans()) : '-' }}</td>
                             <td>@if ($plan->scan_run_id)<a href="{{ route('cryptospot.scans.show', $plan->scan_run_id) }}">#{{ $plan->scan_run_id }}</a>@else - @endif</td>

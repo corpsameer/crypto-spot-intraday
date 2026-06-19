@@ -487,3 +487,11 @@ The read-only Portfolio dashboard is available at `/cryptospot/portfolio` for lo
 - The page shows current cash, reserved cash, deployed capital, realized P&L, unrealized P&L, total equity, total return, monthly capital growth, open portfolio trades, pending reserved trade plans, recently closed trades, recent portfolio transactions, and allocation summaries by setup, score bucket, and symbol.
 - The dashboard is read-only: it does not reserve capital, release capital, edit balances, place trades, or call private exchange APIs.
 - Reconciliation warnings may appear if stored account totals differ from currently calculated open-trade or reserved-plan totals. Run the realtime monitor/release manager to refresh portfolio state before interpreting those warnings as accounting issues.
+
+## Expired trade plan capital release
+
+Scan-cycle expiry marks old untriggered trade plans as `expired` when a newer successful scan replaces them. The portfolio release manager then releases reserved capital for expired, untriggered trade plans that still have `portfolio_status = capital_reserved` and no linked simulated trade.
+
+Expired untriggered plan release is accounting-only: it creates no P&L, does not create a simulated trade, does not add allocated capital back to `current_cash`, and does not change `realized_pnl` or `deployed_capital`. It decreases `reserved_cash` by the historical `allocated_capital`, keeps the allocation history on the trade plan, marks the plan portfolio status as `released`, sets `capital_released_at`, and writes one neutral `capital_released` portfolio transaction.
+
+The release path is idempotent. Existing `capital_released` transactions and populated `capital_released_at` values prevent duplicate reserved-cash reductions, and plans with linked simulated trades are skipped even if a plan status is accidentally `expired`.
