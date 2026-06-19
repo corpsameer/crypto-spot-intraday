@@ -49,7 +49,7 @@ class WatchlistCandidateEngine:
             for row in rows:
                 symbol = row.get("coindcx_symbol") or row.get("scan_result_id")
                 try:
-                    existing = self._find_existing_candidate(row.get("spot_symbol_id"))
+                    existing = self._find_existing_candidate(row.get("spot_symbol_id"), scan_run_id)
                     existing_payload = {}
                     if existing and existing.get("raw_payload"):
                         existing_payload = self._loads(existing.get("raw_payload"))
@@ -147,7 +147,7 @@ class WatchlistCandidateEngine:
         )
         return {row["COLUMN_NAME"] for row in rows}
 
-    def _find_existing_candidate(self, spot_symbol_id: int):
+    def _find_existing_candidate(self, spot_symbol_id: int, scan_run_id: int):
         if not spot_symbol_id:
             return None
         return fetch_one(
@@ -155,11 +155,12 @@ class WatchlistCandidateEngine:
             SELECT id, raw_payload
             FROM candidate_watchlists
             WHERE spot_symbol_id = %s
+            AND scan_run_id = %s
             AND status IN ('active', 'refreshed')
             ORDER BY updated_at DESC, id DESC
             LIMIT 1
             """,
-            (spot_symbol_id,),
+            (spot_symbol_id, scan_run_id),
         )
 
     def _build_raw_payload(self, row: dict, existing_payload: dict = None) -> dict:

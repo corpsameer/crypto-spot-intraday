@@ -15,6 +15,8 @@ class CandidateWatchlist extends Model
     protected $fillable = [
         'spot_symbol_id',
         'scanner_metric_id',
+        'scan_run_id',
+        'scan_result_id',
         'coindcx_symbol',
         'detected_at',
         'candidate_type',
@@ -27,6 +29,8 @@ class CandidateWatchlist extends Model
         'reason',
         'rejection_reason',
         'expires_at',
+        'expiry_reason',
+        'expired_at',
         'raw_payload'
     ];
 
@@ -35,6 +39,7 @@ class CandidateWatchlist extends Model
         return [
             'detected_at' => 'datetime',
             'expires_at' => 'datetime',
+            'expired_at' => 'datetime',
             'trigger_price' => 'decimal:12',
             'confirmation_price' => 'decimal:12',
             'last_price' => 'decimal:12',

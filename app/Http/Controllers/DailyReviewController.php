@@ -83,7 +83,7 @@ class DailyReviewController extends Controller
         })->get();
 
         $healthLogs = SystemHealthLog::query()->whereDate('checked_at', $date)->orderByDesc('checked_at')->get();
-        $expectedServices = ['scan_runner','daily_gainer_leaderboard','missed_gainer_analyzer','retention_cleanup','trade_plan_trigger_monitor','breakout_entry_simulator','pullback_entry_simulator','active_trade_monitor','trade_event_monitor','trailing_monitor','trade_expiry_monitor'];
+        $expectedServices = ['scan_runner','daily_gainer_leaderboard','missed_gainer_analyzer','retention_cleanup','trade_plan_trigger_monitor','breakout_entry_simulator','pullback_entry_simulator','active_trade_monitor','trade_event_monitor','trailing_monitor','scan_cycle_expiry_manager'];
         $healthSummary = collect($expectedServices)->map(function ($service) use ($healthLogs) {
             $logs = $healthLogs->where('service_name', $service);
             return ['service' => $service, 'latest' => $logs->first(), 'warnings' => $logs->where('status', 'warning')->count(), 'errors' => $logs->whereIn('status', ['error', 'failed'])->count()];

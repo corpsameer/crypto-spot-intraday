@@ -12,8 +12,8 @@ from cryptospot.trade_expiry_monitor import TradeExpiryMonitor  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the simulated trade expiry/final-close monitor once.")
-    parser.add_argument("--limit", type=int, default=None, help="Optional expired open simulated trade limit")
+    parser = argparse.ArgumentParser(description="Run the legacy disabled simulated trade expiry monitor once.")
+    parser.add_argument("--limit", type=int, default=None, help="Ignored legacy limit; simulated trades no longer expire")
     args = parser.parse_args()
 
     try:

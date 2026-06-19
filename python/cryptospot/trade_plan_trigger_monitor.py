@@ -84,6 +84,10 @@ class TradePlanTriggerMonitor:
                 lowest_price_seen, max_plan_gain_percent, max_plan_drawdown_percent, raw_payload
             FROM trade_plans
             WHERE status IN ('pending', 'watching')
+              AND converted_at IS NULL
+              AND simulated_trade_id IS NULL
+              AND COALESCE(portfolio_status, '') <> 'rejected'
+              AND status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
             ORDER BY score DESC, updated_at ASC
         """
         params = None
@@ -116,12 +120,6 @@ class TradePlanTriggerMonitor:
         lowest = self._lowest(plan.get("lowest_price_seen"), latest_price)
         gain, drawdown = self._gain_drawdown(plan, highest, lowest)
         raw_payload = self._merged_payload(plan.get("raw_payload"), now, latest_price, highest, lowest, gain, drawdown, False, None)
-
-        if self._is_expired(plan, now):
-            self._update_plan(plan_id, "expired", latest_price, highest, lowest, gain, drawdown, None, raw_payload, now)
-            summary["plans_updated"] += 1
-            summary["plans_expired"] += 1
-            return True
 
         trigger_met, warning = self._trigger_condition_met(plan, latest_price)
         if warning:

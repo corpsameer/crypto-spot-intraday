@@ -27,7 +27,6 @@ class SystemHealthController extends Controller
         'active_trade_monitor',
         'trade_event_monitor',
         'trailing_monitor',
-        'trade_expiry_monitor',
     ];
 
     private const SCHEDULED_SERVICES = [
@@ -35,6 +34,7 @@ class SystemHealthController extends Controller
         'daily_gainer_leaderboard' => ['label' => 'Daily gainers', 'threshold_minutes' => 300, 'cadence' => '15 */4 * * * IST', 'command' => 'php artisan cryptospot:daily-gainers'],
         'missed_gainer_analyzer' => ['label' => 'Missed gainers', 'threshold_minutes' => 300, 'cadence' => '20 */4 * * * IST', 'command' => 'php artisan cryptospot:missed-gainers'],
         'retention_cleanup' => ['label' => 'Cleanup', 'threshold_minutes' => 1800, 'cadence' => 'daily 03:30 IST', 'command' => 'php artisan cryptospot:cleanup'],
+        'scan_cycle_expiry_manager' => ['label' => 'Scan-cycle opportunity expiry', 'threshold_minutes' => 90, 'cadence' => 'with each full scan', 'command' => 'php artisan cryptospot:scan'],
     ];
 
     public function index(Request $request): View

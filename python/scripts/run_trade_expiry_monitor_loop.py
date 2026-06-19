@@ -34,9 +34,9 @@ def _print_cycle(summary: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the simulated trade expiry/final-close monitor loop.")
+    parser = argparse.ArgumentParser(description="Run the legacy disabled simulated trade expiry monitor loop.")
     parser.add_argument("--interval", type=int, default=None, help="Loop interval in seconds")
-    parser.add_argument("--limit", type=int, default=None, help="Optional expired open simulated trade limit per cycle")
+    parser.add_argument("--limit", type=int, default=None, help="Ignored legacy limit; simulated trades no longer expire per cycle")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
     args = parser.parse_args()
 

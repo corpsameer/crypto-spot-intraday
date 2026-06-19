@@ -585,39 +585,13 @@ python scripts/run_trailing_monitor_loop.py --interval 15 --limit 50
 
 The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades and should run after the active trade price monitor and TP1/TP2/SL event monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
 
-## Expiry/final close logic
+## Scan-cycle opportunity expiry
 
-The trade expiry monitor closes only still-open `simulated_trades` rows whose `expires_at` time has passed. It loads rows with `status IN ('active', 'tp1_hit', 'tp2_hit', 'trailing_active')`, `closed_at IS NULL`, and `expires_at <= NOW()`. It does not monitor all coins, fetch prices, create simulated trades, place real trades, use private CoinDCX APIs, or require API keys.
+Simulated trades no longer expire by time or by scan cycle. The legacy `trade_expiry_monitor` is disabled and does not update `simulated_trades`, create expiry events, set `close_reason = expiry`, or close active trades. Open simulated trades close only through SL, TP/trailing, or a future manual-close workflow.
 
-For each expired open simulated trade, the monitor:
+Opportunity expiry now happens in `scan_cycle_expiry_manager` immediately after a new `scan_runs` row is created for a full scan and before the new scan writes watchlist candidates or trade plans. It expires only older unexecuted `candidate_watchlists` and older pending/watching unconverted `trade_plans` with reason `new_scan_replaced`; `simulated_trades_expired` is always `0`. Triggered plans are deliberately skipped to avoid a race with breakout/pullback entry conversion. Reserved capital on expired untriggered plans is not released here and is deferred to a later portfolio release task.
 
-- Uses `latest_price` as the close price when it is available and greater than zero.
-- Falls back to `entry_price` when `latest_price` is missing or invalid.
-- Calculates `final_pnl_percent` as `((close_price - entry_price) / entry_price) * 100` for long simulated trades.
-- Creates one idempotent `EXPIRED` `trade_events` row per simulated trade.
-- Updates the simulated trade with `status = expired`, `closed_at`, `close_price`, `close_reason = expiry`, `final_pnl_percent`, and matching `current_pnl_percent`.
-- Stores the latest expiry-monitor snapshot in `raw_payload.expiry_monitor`.
-- Writes a `trade_expiry_monitor` health log entry to `system_health_logs`.
-
-The monitor checks for an existing `EXPIRED` event before inserting, so repeated runs do not duplicate expiry events. Already expired or otherwise closed trades are not loaded again.
-
-Recommended one-shot final-close flow from the project root:
-
-```bash
-cd python
-python scripts/run_active_trade_monitor_once.py --limit 50
-python scripts/run_trade_event_monitor_once.py --limit 50
-python scripts/run_trailing_monitor_once.py --limit 50
-python scripts/run_trade_expiry_monitor_once.py --limit 50
-```
-
-Run a loop test from inside the `python` folder:
-
-```bash
-python scripts/run_trade_expiry_monitor_loop.py --interval 15 --limit 50
-```
-
-The loop uses `monitor.active_trade_refresh_seconds` from `app_settings` when `--interval` is not provided, defaulting to 15 seconds if the setting is missing. It checks only open simulated trades whose expiry time has passed and should run after the active trade price monitor, TP1/TP2/SL event monitor, and trailing monitor in the MVP flow. Supervisor setup is intentionally not included in this task.
+Recommended realtime flow from the project root remains active-trade monitoring, TP/SL event monitoring, and trailing handling; there is no realtime simulated-trade expiry close step.
 
 ## Daily gainer leaderboard
 
@@ -674,7 +648,7 @@ The combined process runs these existing simulation monitors in order each cycle
 4. `ActiveTradeMonitor` updates only open `simulated_trades`.
 5. `TradeEventMonitor` logs TP1/TP2/SL events from stored latest prices.
 6. `TrailingMonitor` handles trailing behavior after TP2.
-7. `TradeExpiryMonitor` closes expired open simulated trades.
+Scan-cycle opportunity expiry is handled by `ScanCycleExpiryManager` during full scans; no realtime monitor closes simulated trades for expiry.
 
 Run one local acceptance cycle from inside the `python` folder:
 
@@ -688,7 +662,7 @@ Run a short local loop test, then stop with `Ctrl+C`:
 python scripts/run_realtime_monitors_loop.py --interval 10 --limit 50
 ```
 
-The script supports optional skip flags for operational testing: `--skip-plan-trigger`, `--skip-entry-simulators`, `--skip-active-trade`, `--skip-events`, `--skip-trailing`, and `--skip-expiry`. If `--interval` is not supplied, it reads `monitor.active_trade_refresh_seconds` and falls back to 15 seconds.
+The script supports optional skip flags for operational testing: `--skip-plan-trigger`, `--skip-entry-simulators`, `--skip-active-trade`, `--skip-events`, and `--skip-trailing`. If `--interval` is not supplied, it reads `monitor.active_trade_refresh_seconds` and falls back to 15 seconds.
 
 Each monitor failure is caught and printed as a compact JSON error so the next monitor can continue. Startup/import failures exit with code `1`; normal completion, `--once`, and `Ctrl+C` exit with code `0`.
 
@@ -748,7 +722,7 @@ WHERE service_name IN (
     'active_trade_monitor',
     'trade_event_monitor',
     'trailing_monitor',
-    'trade_expiry_monitor'
+    'scan_cycle_expiry_manager'
 )
 ORDER BY checked_at DESC
 LIMIT 30;
