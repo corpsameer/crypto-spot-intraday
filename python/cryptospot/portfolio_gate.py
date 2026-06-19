@@ -133,9 +133,9 @@ class PortfolioGate:
             SELECT COUNT(*) AS cnt
             FROM trade_plans
             WHERE status IN ('pending','watching','triggered')
-              AND (converted_at IS NULL OR converted_at = '')
+              AND converted_at IS NULL
               AND (simulated_trade_id IS NULL OR simulated_trade_id = 0)
-              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND capital_released_at IS NULL
               AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
         """) or {}
         current_cash = _float(account.get("current_cash"), 0.0) if account else 0.0
@@ -191,9 +191,9 @@ class PortfolioGate:
                     status IN ('pending','watching','triggered')
                     OR (portfolio_status = 'capital_reserved' AND (simulated_trade_id IS NULL OR simulated_trade_id = 0))
                   )
-              AND (converted_at IS NULL OR converted_at = '')
+              AND converted_at IS NULL
               AND (simulated_trade_id IS NULL OR simulated_trade_id = 0)
-              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND capital_released_at IS NULL
               AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
         """
         params = [symbol]

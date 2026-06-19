@@ -86,7 +86,7 @@ class TradePlanTriggerMonitor:
             WHERE status IN ('pending', 'watching')
               AND converted_at IS NULL
               AND simulated_trade_id IS NULL
-              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND capital_released_at IS NULL
               AND COALESCE(portfolio_status, '') IN ('capital_reserved','approved')
               AND status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
             ORDER BY score DESC, updated_at ASC

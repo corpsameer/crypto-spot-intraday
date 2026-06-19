@@ -112,7 +112,7 @@ class BreakoutEntrySimulator:
               AND tp.entry_strategy = 'breakout'
               AND tp.simulated_trade_id IS NULL
               AND tp.converted_at IS NULL
-              AND (tp.capital_released_at IS NULL OR tp.capital_released_at = '')
+              AND tp.capital_released_at IS NULL
               AND COALESCE(tp.portfolio_status, '') IN ('capital_reserved','approved')
               AND tp.status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
               AND NOT EXISTS (SELECT 1 FROM simulated_trades st WHERE st.trade_plan_id = tp.id LIMIT 1)
