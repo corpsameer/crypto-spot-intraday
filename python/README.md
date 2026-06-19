@@ -777,3 +777,17 @@ Legacy simulated trades without portfolio allocation fields continue through the
 After portfolio trade P&L is updated, affected portfolio accounts are reconciled from their open portfolio trades. `deployed_capital` is the sum of open trade `allocated_capital`, `unrealized_pnl` is the sum of open trade `unrealized_pnl_amount`, and `total_equity = current_cash + unrealized_pnl`. This intentionally does not add deployed capital into equity because `current_cash` is not reduced when capital is reserved or deployed in the paper-accounting model.
 
 Active monitoring does not change `current_cash`, `reserved_cash`, or `realized_pnl` while a trade remains open. It also does not release capital, close trades, write `trade_exit` transactions, or create a portfolio transaction for every unrealized P&L update. Capital release and realized P&L remain deferred to Task 49.
+
+## Portfolio capital release
+
+Task 49 adds an idempotent portfolio capital release manager for the two portfolio accounting release paths.
+
+Expired untriggered trade plans release only their reserved capital. When a plan is `status = expired`, still has `portfolio_status = capital_reserved`, has positive `allocated_capital`, has not converted into a simulated trade, and has no existing `capital_released` transaction, the release manager reduces `reserved_cash` by the allocated amount, marks the plan `portfolio_status = released`, stamps `capital_released_at`, and writes a neutral `portfolio_transactions.transaction_type = capital_released` row. No simulated trade is created, no deployed capital is affected, and no P&L is created for this path.
+
+Closed portfolio simulated trades release deployed capital and realize INR P&L. For supported closed trade statuses/reasons such as stop loss, trailing stop, take profit, or manual closes, the release manager calculates `close_value = quantity * close_price`, `realized_pnl_amount = close_value - allocated_capital`, and `net_pnl_amount = realized_pnl_amount - fees_amount`. It stamps `capital_released_at`, clears unrealized P&L on the closed trade, reduces deployed capital, increases `realized_pnl`, and writes a `portfolio_transactions.transaction_type = trade_exit` row.
+
+The paper-accounting convention remains unchanged: `current_cash` changes only by realized net P&L on trade exit, not by the full close value, because cash was not reduced when capital was reserved or deployed. After release, deployed capital is refreshed from remaining open portfolio trades, unrealized P&L is refreshed from remaining open portfolio trades, and `total_equity = current_cash + unrealized_pnl`.
+
+The release manager is idempotent. It checks for an existing `capital_released` transaction before releasing an expired trade plan and an existing `trade_exit` transaction before releasing a closed simulated trade, so rerunning the realtime loop does not double-release reserved cash, double-release deployed capital, or double-change current cash/realized P&L.
+
+Open simulated trades still do not expire by time. The release manager explicitly skips old simulated trades with `status = expired` or expiry close reasons so it does not reintroduce simulated trade expiry or mix old incorrect expiry data into portfolio release accounting.
