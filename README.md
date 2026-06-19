@@ -549,3 +549,23 @@ php artisan cryptospot:portfolio-reconcile --fix
 ```
 
 `--fix` only refreshes derived account totals on `portfolio_accounts` (`reserved_cash`, `deployed_capital`, `unrealized_pnl`, `total_equity`, and `total_return_percent`) from the reconciliation calculations. It does not create/delete portfolio transactions, close trades, release capital, remove duplicates, or alter scan/trade lifecycle rows. Every run writes a `system_health_logs` row with `service_name = portfolio_reconciliation` and a summary payload.
+
+## Portfolio E2E test
+
+Run the non-destructive portfolio validation report with:
+
+```bash
+php artisan cryptospot:portfolio-e2e-test
+```
+
+The command validates the portfolio-aware simulation chain, including scan-cycle expiry, watchlist creation, trade plan creation, capital reservation, trigger/entry conversion, active INR P&L, closed-trade capital release, expired-plan capital release, duplicate-symbol protection, cooldown protection, reconciliation, and portfolio dashboard readiness.
+
+By default, the command is read-only for trading data: it does not run the scanner, create trade plans, reserve/release capital, close simulated trades, wipe data, place real trades, call private APIs, or use API keys. Its only write is a `system_health_logs` row for the `portfolio_e2e_test` service summarizing the validation result.
+
+For machine-readable output, use:
+
+```bash
+php artisan cryptospot:portfolio-e2e-test --json
+```
+
+The JSON includes the final `status`, all report `sections`, `errors`, `warnings`, and `recommendations`.

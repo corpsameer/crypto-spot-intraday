@@ -13,7 +13,7 @@ class PortfolioReconciliationService
     private const MATERIAL_MONEY_DIFF = 1.00;
     private const MATERIAL_PERCENT_DIFF = 0.01;
 
-    public function reconcile(?int $portfolioId = null, bool $fix = false): array
+    public function reconcile(?int $portfolioId = null, bool $fix = false, bool $logHealth = true): array
     {
         $portfolios = PortfolioAccount::query()
             ->when($portfolioId, fn ($query) => $query->whereKey($portfolioId), fn ($query) => $query->where('is_active', true))
@@ -30,7 +30,7 @@ class PortfolioReconciliationService
             'reports' => $reports,
         ];
 
-        $this->logHealth($status, $summary);
+        if ($logHealth) $this->logHealth($status, $summary);
 
         return count($reports) === 1
             ? array_merge($reports[0], ['all_reports' => $reports])
