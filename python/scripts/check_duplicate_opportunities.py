@@ -32,7 +32,7 @@ def main():
         FROM trade_plans
         WHERE status IN ({PENDING_STATUSES})
           AND converted_at IS NULL
-          AND (capital_released_at IS NULL OR capital_released_at = '')
+          AND capital_released_at IS NULL
           AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
         GROUP BY coindcx_symbol HAVING cnt > 1
     """)
@@ -46,7 +46,7 @@ def main():
           SELECT coindcx_symbol symbol, 0 open_trade_count, COUNT(*) pending_plan_count
           FROM trade_plans
           WHERE status IN ({PENDING_STATUSES}) AND converted_at IS NULL
-            AND (capital_released_at IS NULL OR capital_released_at = '')
+            AND capital_released_at IS NULL
             AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
           GROUP BY coindcx_symbol
         ) x GROUP BY symbol HAVING total_active_opportunities > 1
