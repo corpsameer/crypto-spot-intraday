@@ -781,3 +781,11 @@ A `capital_reserved` portfolio transaction is written once per reserved trade pl
 Rejected gate candidates and allocation-rejected candidates stay unallocated. Allocation rejection moves the plan to `status = portfolio_rejected` with `portfolio_status = rejected` and a `portfolio_rejection_reason`, so realtime monitors do not treat the rejected plan as usable.
 
 Task 46 remains simulation-only. It does not create simulated trade quantity, carry capital into `simulated_trades`, calculate INR P&L, release capital on expiry or close, change close logic, call CoinDCX private APIs, use API keys, or place real orders. Capital carry-forward into simulated trades is intentionally deferred to Task 47, and capital release is handled by later tasks.
+
+## Carrying allocation into simulated trades
+
+Task 47 carries portfolio allocation from a reserved trade plan into the simulated trade at entry time. When a `trade_plans` row with `portfolio_status = capital_reserved` triggers and is converted by the breakout or pullback entry simulator, the resulting `simulated_trades` row receives the portfolio account, allocated capital, allocation percent, simulated quantity, entry value, current value, initial zero unrealized INR P&L, paper fees, and initial net INR P&L fields.
+
+At entry, the accounting move is from reserved capital to deployed capital only: `reserved_cash` decreases by the allocated amount and `deployed_capital` increases by the same amount. `current_cash` and `total_equity` remain unchanged at entry. A `portfolio_transactions` row with `transaction_type = trade_entry` records this reserved-to-deployed movement and links back to both the trade plan and simulated trade.
+
+The entry simulators remain simulation-only and idempotent. Legacy unallocated trade plans may still convert without portfolio fields, while capital-reserved plans require a matching portfolio account and enough reserved cash before a portfolio-aware simulated trade is created. Active INR P&L updates are intentionally deferred to Task 48, and capital release on close is intentionally deferred to Task 49.
