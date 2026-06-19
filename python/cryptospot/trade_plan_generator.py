@@ -99,6 +99,7 @@ class TradePlanGenerator:
             capital_allocator = CapitalAllocator(settings_reader=get_setting)
             portfolio_state = portfolio_gate.get_portfolio_state()
             summary["portfolio_enabled"] = bool(portfolio_state.get("settings", {}).get("enabled", True))
+            allow_multiple_strategies = self._setting_bool("portfolio.allow_multiple_strategies_same_symbol", False)
             for row in rows:
                 symbol = row.get("coindcx_symbol") or row.get("scan_result_id")
                 try:
@@ -107,7 +108,7 @@ class TradePlanGenerator:
                         raise ValueError("missing_reference_price")
 
                     primary_plan_id = None
-                    for plan in self._plans_for_row(row, reference_price, settings):
+                    for plan in self._plans_for_row(row, reference_price, settings, allow_multiple_strategies):
                         gate_result = portfolio_gate.evaluate_candidate(self._candidate_for_gate(row, plan))
                         plan = self._apply_portfolio_gate(plan, gate_result)
                         plan_id, action = self._upsert_plan(row, plan, columns)
@@ -188,9 +189,9 @@ class TradePlanGenerator:
             ORDER BY sr.selection_rank ASC, sr.final_score DESC, sr.id ASC
         """, (scan_run_id,))
 
-    def _plans_for_row(self, row, reference_price, settings):
+    def _plans_for_row(self, row, reference_price, settings, allow_multiple_strategies=False):
         plans = [self._build_plan(row, reference_price, "breakout", settings)]
-        if self._is_extended(row):
+        if allow_multiple_strategies and self._is_extended(row):
             plans.append(self._build_plan(row, reference_price, "pullback", settings))
         return plans
 
@@ -253,9 +254,9 @@ class TradePlanGenerator:
     def _upsert_plan(self, row, plan, columns):
         existing = fetch_one("""
             SELECT id, raw_payload FROM trade_plans
-            WHERE candidate_watchlist_id = %s AND scan_run_id = %s AND entry_strategy = %s AND status IN ('pending', 'watching')
+            WHERE candidate_watchlist_id = %s AND scan_run_id = %s AND entry_strategy = %s AND scan_result_id = %s AND status IN ('pending', 'watching')
             ORDER BY updated_at DESC LIMIT 1
-        """, (row.get("candidate_watchlist_id"), row.get("scan_run_id"), plan.get("entry_strategy")))
+        """, (row.get("candidate_watchlist_id"), row.get("scan_run_id"), plan.get("entry_strategy"), row.get("scan_result_id")))
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if existing:
             payload = self._build_raw_payload(row, self._loads(plan["raw_payload"]).get("plan_calculation", {}), self._loads(existing.get("raw_payload")))

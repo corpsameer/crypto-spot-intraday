@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from cryptospot.coindcx_client import CoinDCXPublicClient
-from cryptospot.db import execute, fetch_all
+from cryptospot.db import execute, fetch_all, fetch_one
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 from cryptospot.scan_runner import normalize_symbol, safe_float, extract_ticker_symbol
@@ -86,7 +86,8 @@ class TradePlanTriggerMonitor:
             WHERE status IN ('pending', 'watching')
               AND converted_at IS NULL
               AND simulated_trade_id IS NULL
-              AND COALESCE(portfolio_status, '') <> 'rejected'
+              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND COALESCE(portfolio_status, '') IN ('capital_reserved','approved')
               AND status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
             ORDER BY score DESC, updated_at ASC
         """
@@ -128,6 +129,14 @@ class TradePlanTriggerMonitor:
         status = "triggered" if trigger_met else "watching"
         triggered_at = now if trigger_met else None
         if trigger_met:
+            duplicate = self._duplicate_open_trade(plan)
+            if duplicate:
+                raw_payload = self._merged_payload(plan.get("raw_payload"), now, latest_price, highest, lowest, gain, drawdown, False, None, plan)
+                raw_payload["duplicate_symbol_guard"] = {"duplicate_trade_id": duplicate.get("id"), "checked_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+                self._mark_duplicate_symbol_rejected(plan_id, raw_payload, now)
+                summary["errors"].append({"plan_id": plan_id, "warning": "portfolio_rejected_duplicate_symbol_open_trade", "duplicate_trade_id": duplicate.get("id")})
+                summary["skipped"] += 1
+                return True
             raw_payload = self._merged_payload(plan.get("raw_payload"), now, latest_price, highest, lowest, gain, drawdown, True, triggered_at, plan)
 
         self._update_plan(plan_id, status, latest_price, highest, lowest, gain, drawdown, triggered_at, raw_payload, now)
@@ -135,6 +144,32 @@ class TradePlanTriggerMonitor:
         if trigger_met:
             summary["plans_triggered"] += 1
         return True
+
+
+    def _duplicate_open_trade(self, plan: dict):
+        return fetch_one(
+            """
+            SELECT id FROM simulated_trades
+            WHERE coindcx_symbol = %s
+              AND status IN ('active','tp1_hit','tp2_hit','trailing_active')
+              AND closed_at IS NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (plan.get("coindcx_symbol"),),
+        )
+
+    def _mark_duplicate_symbol_rejected(self, plan_id, raw_payload, now):
+        execute(
+            """
+            UPDATE trade_plans
+            SET status = 'portfolio_rejected', portfolio_status = 'rejected',
+                portfolio_rejection_reason = 'portfolio_rejected_duplicate_symbol_open_trade',
+                rejection_reason = 'portfolio_rejected_duplicate_symbol_open_trade',
+                raw_payload = %s, updated_at = %s
+            WHERE id = %s AND status IN ('pending','watching')
+            """,
+            (json.dumps(raw_payload, default=str), now, plan_id),
+        )
 
     def _update_plan(self, plan_id, status, latest_price, highest, lowest, gain, drawdown, triggered_at, raw_payload, now):
         execute(

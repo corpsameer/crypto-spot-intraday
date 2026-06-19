@@ -79,7 +79,7 @@ class AppSettingSeeder extends Seeder
             ['portfolio.symbol_cooldown_hours', '24', 'integer', 'portfolio', true, 'Symbol Cooldown Hours', 'Number of hours before same symbol can be planned again after a trade closes.'],
             ['portfolio.cooldown_after_sl_hours', '24', 'integer', 'portfolio', true, 'Cooldown After SL Hours', 'Cooldown for a symbol after stop-loss close.'],
             ['portfolio.cooldown_after_win_hours', '12', 'integer', 'portfolio', true, 'Cooldown After Winning Close Hours', 'Cooldown for a symbol after trailing/positive close.'],
-            ['portfolio.cooldown_after_expiry_hours', '6', 'integer', 'portfolio', true, 'Cooldown After Expiry Hours', 'Cooldown for a symbol after untriggered/expired opportunity.'],
+            ['portfolio.cooldown_after_expiry_hours', '0', 'integer', 'portfolio', true, 'Cooldown After Expiry Hours', 'Optional cooldown for expired untriggered plans only; current strategy keeps this at 0 so released expired plans do not block fresh scans.'],
             ['portfolio.reserve_capital_on_plan_creation', 'true', 'boolean', 'portfolio', true, 'Reserve Capital On Plan Creation', 'Reserves allocated capital when trade plan is created.'],
             ['portfolio.release_capital_on_plan_expiry', 'true', 'boolean', 'portfolio', true, 'Release Capital On Plan Expiry', 'Releases reserved capital when trade plan expires without entry.'],
             ['portfolio.include_pending_plans_in_capital_check', 'true', 'boolean', 'portfolio', true, 'Include Pending Plans In Capital Check', 'Counts pending plans as reserved opportunities.'],
