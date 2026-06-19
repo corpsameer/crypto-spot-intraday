@@ -789,3 +789,17 @@ Task 47 carries portfolio allocation from a reserved trade plan into the simulat
 At entry, the accounting move is from reserved capital to deployed capital only: `reserved_cash` decreases by the allocated amount and `deployed_capital` increases by the same amount. `current_cash` and `total_equity` remain unchanged at entry. A `portfolio_transactions` row with `transaction_type = trade_entry` records this reserved-to-deployed movement and links back to both the trade plan and simulated trade.
 
 The entry simulators remain simulation-only and idempotent. Legacy unallocated trade plans may still convert without portfolio fields, while capital-reserved plans require a matching portfolio account and enough reserved cash before a portfolio-aware simulated trade is created. Active INR P&L updates are intentionally deferred to Task 48, and capital release on close is intentionally deferred to Task 49.
+
+### Active INR P&L monitoring
+
+Task 48 adds active INR P&L monitoring for portfolio-aware simulated trades. During each active-trade monitor cycle, open simulated trades with `portfolio_account_id`, `allocated_capital`, and `quantity` now refresh their INR fields from the latest matched public ticker price:
+
+- `current_value = quantity * latest_price`
+- `unrealized_pnl_amount = current_value - allocated_capital`
+- `net_pnl_amount = unrealized_pnl_amount - fees_amount`
+
+Legacy simulated trades without portfolio allocation fields continue through the existing percentage-based monitor path and are skipped for INR updates rather than backfilled.
+
+After portfolio trade P&L is updated, affected portfolio accounts are reconciled from their open portfolio trades. `deployed_capital` is the sum of open trade `allocated_capital`, `unrealized_pnl` is the sum of open trade `unrealized_pnl_amount`, and `total_equity = current_cash + unrealized_pnl`. This intentionally does not add deployed capital into equity because `current_cash` is not reduced when capital is reserved or deployed in the paper-accounting model.
+
+Active monitoring does not change `current_cash`, `reserved_cash`, or `realized_pnl` while a trade remains open. It also does not release capital, close trades, write `trade_exit` transactions, or create a portfolio transaction for every unrealized P&L update. Capital release and realized P&L remain deferred to Task 49.
