@@ -495,3 +495,20 @@ Scan-cycle expiry marks old untriggered trade plans as `expired` when a newer su
 Expired untriggered plan release is accounting-only: it creates no P&L, does not create a simulated trade, does not add allocated capital back to `current_cash`, and does not change `realized_pnl` or `deployed_capital`. It decreases `reserved_cash` by the historical `allocated_capital`, keeps the allocation history on the trade plan, marks the plan portfolio status as `released`, sets `capital_released_at`, and writes one neutral `capital_released` portfolio transaction.
 
 The release path is idempotent. Existing `capital_released` transactions and populated `capital_released_at` values prevent duplicate reserved-cash reductions, and plans with linked simulated trades are skipped even if a plan status is accidentally `expired`.
+
+### Portfolio duplicate-symbol and cooldown rules
+
+The portfolio-aware simulator enforces one active opportunity per symbol by default. An active opportunity is either an open simulated trade (`active`, `tp1_hit`, `tp2_hit`, or `trailing_active`) or a triggerable trade plan (`pending`, `watching`, or `triggered`) that has not been converted or released. Expired/released/rejected plans and closed simulated trades do not count as active opportunities.
+
+Closed simulated trades create symbol cooldowns before the same symbol can be planned again: stop-loss closes default to 24 hours, trailing/take-profit/positive closes default to 12 hours, and manual closes default to 12 hours. Legacy simulated trades that were closed with an expiry reason are ignored for cooldown because open-trade expiry is historical incorrect behavior.
+
+Expired untriggered trade plans with released capital do not block future scans by default (`portfolio.cooldown_after_expiry_hours=0`). The setting exists only for intentionally enabling an expiry cooldown later.
+
+Watchlist candidates and trade plans are scan-specific. New scans create rows tied to the current scan/result and must not reopen old expired or released rows by symbol alone. Trigger and entry monitors also defensively skip released/rejected/expired plans, prevent duplicate simulated trades for one trade plan, and prevent duplicate open trades for one symbol.
+
+Run the read-only health report with:
+
+```bash
+cd python
+python scripts/check_duplicate_opportunities.py
+```

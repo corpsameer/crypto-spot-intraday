@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from cryptospot.db import fetch_all, fetch_one, get_connection
+from cryptospot.db import execute, fetch_all, fetch_one, get_connection
 from cryptospot.health import write_health_log
 from cryptospot.logger import get_logger
 from cryptospot.portfolio_entry_manager import PortfolioEntryManager
@@ -112,7 +112,8 @@ class PullbackEntrySimulator:
               AND tp.entry_strategy = 'pullback'
               AND tp.simulated_trade_id IS NULL
               AND tp.converted_at IS NULL
-              AND COALESCE(tp.portfolio_status, '') <> 'rejected'
+              AND (tp.capital_released_at IS NULL OR tp.capital_released_at = '')
+              AND COALESCE(tp.portfolio_status, '') IN ('capital_reserved','approved')
               AND tp.status NOT IN ('expired', 'portfolio_rejected', 'converted_to_trade', 'cancelled')
               AND NOT EXISTS (SELECT 1 FROM simulated_trades st WHERE st.trade_plan_id = tp.id LIMIT 1)
             ORDER BY tp.triggered_at ASC, tp.updated_at ASC
@@ -140,6 +141,13 @@ class PullbackEntrySimulator:
             fixed = self._fix_existing_conversion(plan, existing["id"], entry_price, now)
             summary["plans_converted"] += 1 if fixed else 0
             summary["skipped"] += 1
+            return
+
+        duplicate_open_trade = self._duplicate_open_trade(plan)
+        if duplicate_open_trade:
+            self._mark_duplicate_symbol_rejected(plan_id, duplicate_open_trade.get('id'), now)
+            summary['errors'].append({'plan_id': plan_id, 'warning': 'portfolio_rejected_duplicate_symbol_open_trade', 'duplicate_trade_id': duplicate_open_trade.get('id')})
+            summary['skipped'] += 1
             return
 
         portfolio_fields = self._prepare_portfolio_fields(plan, entry_price, summary)
@@ -232,6 +240,34 @@ class PullbackEntrySimulator:
             if cursor:
                 cursor.close()
             connection.close()
+
+
+    def _duplicate_open_trade(self, plan: dict):
+        return fetch_one(
+            """
+            SELECT id
+            FROM simulated_trades
+            WHERE coindcx_symbol = %s
+              AND status IN ('active','tp1_hit','tp2_hit','trailing_active')
+              AND closed_at IS NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (plan.get("coindcx_symbol"),),
+        )
+
+    def _mark_duplicate_symbol_rejected(self, plan_id: int, duplicate_trade_id: int, now: datetime) -> None:
+        payload = {"duplicate_trade_id": duplicate_trade_id, "rejected_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+        execute(
+            """
+            UPDATE trade_plans
+            SET status = 'portfolio_rejected', portfolio_status = 'rejected',
+                portfolio_rejection_reason = 'portfolio_rejected_duplicate_symbol_open_trade',
+                rejection_reason = 'portfolio_rejected_duplicate_symbol_open_trade',
+                portfolio_notes = %s, updated_at = %s
+            WHERE id = %s AND status = 'triggered'
+            """,
+            (json.dumps(payload, separators=(",", ":"), default=self._json_default), now, plan_id),
+        )
 
     def _fix_existing_conversion(self, plan: dict, trade_id: int, entry_price: float, now: datetime) -> bool:
         if plan.get("simulated_trade_id") == trade_id and plan.get("status") == "converted_to_trade":

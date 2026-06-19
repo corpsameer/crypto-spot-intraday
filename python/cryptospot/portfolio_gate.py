@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable
 
-from cryptospot.db import fetch_one
+from cryptospot.db import fetch_all, fetch_one
 from cryptospot.settings import get_setting
 
 OPEN_TRADE_STATUSES = ("active", "tp1_hit", "tp2_hit", "trailing_active")
@@ -19,7 +19,7 @@ DEFAULTS = {
     "portfolio.symbol_cooldown_hours": 24,
     "portfolio.cooldown_after_sl_hours": 24,
     "portfolio.cooldown_after_win_hours": 12,
-    "portfolio.cooldown_after_expiry_hours": 6,
+    "portfolio.cooldown_after_expiry_hours": 0,
     "portfolio.include_pending_plans_in_capital_check": True,
     "portfolio.allow_multiple_strategies_same_symbol": False,
     "portfolio.watchlist_score_min": 50.0,
@@ -129,7 +129,15 @@ class PortfolioGate:
         settings = self._settings()
         account = fetch_one("SELECT * FROM portfolio_accounts WHERE is_active = 1 ORDER BY id ASC LIMIT 1")
         open_trades = fetch_one("SELECT COUNT(*) AS cnt FROM simulated_trades WHERE status IN ('active','tp1_hit','tp2_hit','trailing_active') AND closed_at IS NULL") or {}
-        pending_plans = fetch_one("SELECT COUNT(*) AS cnt FROM trade_plans WHERE status IN ('pending','watching','triggered') AND (converted_at IS NULL OR converted_at = '')") or {}
+        pending_plans = fetch_one("""
+            SELECT COUNT(*) AS cnt
+            FROM trade_plans
+            WHERE status IN ('pending','watching','triggered')
+              AND (converted_at IS NULL OR converted_at = '')
+              AND (simulated_trade_id IS NULL OR simulated_trade_id = 0)
+              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
+        """) or {}
         current_cash = _float(account.get("current_cash"), 0.0) if account else 0.0
         reserved_cash = _float(account.get("reserved_cash"), 0.0) if account else 0.0
         available_cash = current_cash - reserved_cash
@@ -160,7 +168,7 @@ class PortfolioGate:
             "symbol_cooldown_hours": _int(raw["symbol_cooldown_hours"], 24),
             "cooldown_after_sl_hours": _int(raw["cooldown_after_sl_hours"], 24),
             "cooldown_after_win_hours": _int(raw["cooldown_after_win_hours"], 12),
-            "cooldown_after_expiry_hours": _int(raw["cooldown_after_expiry_hours"], 6),
+            "cooldown_after_expiry_hours": _int(raw["cooldown_after_expiry_hours"], 0),
             "include_pending_plans_in_capital_check": _bool(raw["include_pending_plans_in_capital_check"], True),
             "allow_multiple_strategies_same_symbol": _bool(raw["allow_multiple_strategies_same_symbol"], False),
             "watchlist_score_min": _float(raw["watchlist_score_min"], 50.0),
@@ -175,7 +183,19 @@ class PortfolioGate:
         return fetch_one(sql + " ORDER BY id DESC LIMIT 1", tuple(params))
 
     def _duplicate_pending_plan(self, symbol: str, strategy: str, allow_multiple: bool):
-        sql = "SELECT id FROM trade_plans WHERE coindcx_symbol = %s AND status IN ('pending','watching','triggered')"
+        sql = """
+            SELECT id
+            FROM trade_plans
+            WHERE coindcx_symbol = %s
+              AND (
+                    status IN ('pending','watching','triggered')
+                    OR (portfolio_status = 'capital_reserved' AND (simulated_trade_id IS NULL OR simulated_trade_id = 0))
+                  )
+              AND (converted_at IS NULL OR converted_at = '')
+              AND (simulated_trade_id IS NULL OR simulated_trade_id = 0)
+              AND (capital_released_at IS NULL OR capital_released_at = '')
+              AND COALESCE(portfolio_status, '') NOT IN ('released','rejected')
+        """
         params = [symbol]
         if allow_multiple and strategy:
             sql += " AND entry_strategy = %s"
@@ -183,36 +203,43 @@ class PortfolioGate:
         return fetch_one(sql + " ORDER BY id DESC LIMIT 1", tuple(params))
 
     def _cooldown(self, symbol: str, settings: dict):
-        row = fetch_one("""
-            SELECT status, exit_reason AS close_reason, closed_at, final_pnl_percent
+        rows = fetch_all("""
+            SELECT id, status, COALESCE(close_reason, exit_reason) AS close_reason, closed_at, final_pnl_percent, net_pnl_amount, portfolio_account_id
             FROM simulated_trades
             WHERE coindcx_symbol = %s AND closed_at IS NOT NULL
-            ORDER BY closed_at DESC LIMIT 1
+            ORDER BY (portfolio_account_id IS NOT NULL) DESC, closed_at DESC, id DESC
+            LIMIT 10
         """, (symbol,))
-        if not row:
+        for row in rows:
+            reason = str(row.get("close_reason") or "").lower()
+            status = str(row.get("status") or "").lower()
+            if status == "expired" or reason in ("expiry", "expired"):
+                continue
+            pnl_percent = _float(row.get("final_pnl_percent"), 0.0)
+            net_pnl = _float(row.get("net_pnl_amount"), 0.0)
+            hours = settings["symbol_cooldown_hours"]
+            if "sl" in status or reason in ("sl", "stop_loss", "stop-loss", "stoploss"):
+                hours = settings["cooldown_after_sl_hours"]
+            elif "trailing" in status or "tp" in status or reason in ("trailing", "trailing_stop", "tp", "tp1", "tp2", "take_profit", "win") or pnl_percent > 0 or net_pnl > 0:
+                hours = settings["cooldown_after_win_hours"]
+            elif "manual" in status or reason == "manual":
+                hours = min(settings["symbol_cooldown_hours"], 12) or 12
+            elif pnl_percent < 0 or net_pnl < 0:
+                hours = settings["symbol_cooldown_hours"]
+            closed_at = _dt(row.get("closed_at"))
+            if not closed_at or hours <= 0:
+                return None
+            cooldown_until = closed_at + timedelta(hours=hours)
+            if datetime.now() < cooldown_until:
+                return {
+                    "cooldown_active": True,
+                    "last_trade_id": row.get("id"),
+                    "last_closed_at": closed_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_close_reason": row.get("close_reason") or row.get("status"),
+                    "cooldown_hours": hours,
+                    "cooldown_until": cooldown_until.strftime("%Y-%m-%d %H:%M:%S"),
+                }
             return None
-        reason = str(row.get("close_reason") or "").lower()
-        status = str(row.get("status") or "").lower()
-        pnl = _float(row.get("final_pnl_percent"), 0.0)
-        hours = settings["symbol_cooldown_hours"]
-        if status == "closed_sl" or reason == "sl":
-            hours = settings["cooldown_after_sl_hours"]
-        elif status == "closed_trailing" or pnl > 0:
-            hours = settings["cooldown_after_win_hours"]
-        elif status == "expired" or reason == "expiry":
-            hours = settings["cooldown_after_expiry_hours"]
-        closed_at = _dt(row.get("closed_at"))
-        if not closed_at or hours <= 0:
-            return None
-        cooldown_until = closed_at + timedelta(hours=hours)
-        if datetime.now() < cooldown_until:
-            return {
-                "cooldown_active": True,
-                "last_closed_at": closed_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "last_close_reason": row.get("close_reason") or row.get("status"),
-                "cooldown_hours": hours,
-                "cooldown_until": cooldown_until.strftime("%Y-%m-%d %H:%M:%S"),
-            }
         return None
 
     def _reject(self, reason: str, account_id, details: dict) -> dict:
