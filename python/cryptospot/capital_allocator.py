@@ -132,39 +132,64 @@ class CapitalAllocator:
         allocated = _float(allocation.get("allocated_capital"), 0.0)
         status = "capital_reserved" if reserve_on_creation else "approved"
         reserved_at = self._now() if reserve_on_creation else None
-        self._update_trade_plan_allocation(trade_plan_id, plan, allocation, status, reserved_at)
         if not reserve_on_creation:
+            self._update_trade_plan_allocation(trade_plan_id, plan, allocation, status, reserved_at)
             return {"reserved": False, "created_transaction": False, "reason": "reservation_disabled"}
 
+        old_current_cash = _float(account.get("current_cash"), 0.0)
         old_reserved = _float(account.get("reserved_cash"), 0.0)
         new_reserved = old_reserved + allocated
+        old_deployed = _float(account.get("deployed_capital"), 0.0)
+        old_realized = _float(account.get("realized_pnl"), 0.0)
+        symbol = plan.get("coindcx_symbol")
         now = self._now()
+        raw_payload = {"allocation": allocation}
+        transaction_sql = """
+            INSERT INTO portfolio_transactions
+            (portfolio_account_id, trade_plan_id, simulated_trade_id, transaction_type, direction, amount,
+             balance_before, balance_after, reserved_before, reserved_after, deployed_before, deployed_after,
+             realized_pnl_before, realized_pnl_after, description, reference_type, reference_id,
+             transaction_time, raw_payload, created_at, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """
+        transaction_params = (
+            account_id,
+            trade_plan_id,
+            None,
+            "capital_reserved",
+            "neutral",
+            allocated,
+            old_current_cash,
+            old_current_cash,
+            old_reserved,
+            new_reserved,
+            old_deployed,
+            old_deployed,
+            old_realized,
+            old_realized,
+            f"Reserved capital for trade plan {symbol}",
+            "trade_plan",
+            trade_plan_id,
+            now,
+            json.dumps(raw_payload, separators=(",", ":"), default=_json_default),
+            now,
+            now,
+        )
+        self._assert_placeholder_count(transaction_sql, transaction_params)
+
         connection = get_connection()
         cursor = None
         try:
             cursor = connection.cursor()
             cursor.execute("UPDATE portfolio_accounts SET reserved_cash = %s, updated_at = %s WHERE id = %s", (new_reserved, now, account_id))
-            payload = json.dumps({"allocation": allocation}, separators=(",", ":"), default=_json_default)
-            cursor.execute(
-                """
-                INSERT INTO portfolio_transactions
-                (portfolio_account_id, trade_plan_id, simulated_trade_id, transaction_type, direction, amount,
-                 balance_before, balance_after, reserved_before, reserved_after, deployed_before, deployed_after,
-                 realized_pnl_before, realized_pnl_after, description, reference_type, reference_id,
-                 transaction_time, raw_payload, created_at, updated_at)
-                VALUES (%s,%s,NULL,'capital_reserved','neutral',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'trade_plan',%s,%s,%s,%s,%s)
-                """,
-                (
-                    account_id, trade_plan_id, allocated,
-                    _float(account.get("current_cash"), 0.0), _float(account.get("current_cash"), 0.0),
-                    old_reserved, new_reserved,
-                    _float(account.get("deployed_capital"), 0.0), _float(account.get("deployed_capital"), 0.0),
-                    _float(account.get("realized_pnl"), 0.0), _float(account.get("realized_pnl"), 0.0),
-                    f"Reserved capital for trade plan {plan.get('coindcx_symbol')}", trade_plan_id, now, payload, now, now,
-                ),
-            )
+            self._update_trade_plan_allocation(trade_plan_id, plan, allocation, status, reserved_at, cursor=cursor)
+            cursor.execute(transaction_sql, transaction_params)
+            transaction_id = cursor.lastrowid
             connection.commit()
-            return {"reserved": True, "created_transaction": True, "reason": "capital_reserved", "reserved_before": old_reserved, "reserved_after": new_reserved}
+            return {"reserved": True, "created_transaction": True, "reason": "capital_reserved", "reserved_before": old_reserved, "reserved_after": new_reserved, "transaction_id": transaction_id}
+        except Exception:
+            connection.rollback()
+            raise
         finally:
             if cursor:
                 cursor.close()
@@ -191,23 +216,31 @@ class CapitalAllocator:
             return "watchlist", settings["watchlist_allocation_capital"]
         return "weak", settings["weak_allocation_capital"]
 
-    def _update_trade_plan_allocation(self, trade_plan_id: int, plan: dict, allocation: dict, status: str, reserved_at):
+    def _update_trade_plan_allocation(self, trade_plan_id: int, plan: dict, allocation: dict, status: str, reserved_at, cursor=None):
         raw_payload = self._loads(plan.get("raw_payload"))
         raw_payload["portfolio_allocation"] = allocation
         notes = json.dumps({"allocation_bucket": allocation.get("allocation_bucket"), "reason": allocation.get("reason"), "details": allocation.get("details", {})}, separators=(",", ":"), default=_json_default)
-        execute(
-            """
+        sql = """
             UPDATE trade_plans
             SET portfolio_account_id = %s, allocated_capital = %s, allocation_percent = %s,
                 capital_reserved_at = %s, portfolio_status = %s, portfolio_rejection_reason = NULL,
                 portfolio_notes = %s, raw_payload = %s, updated_at = %s
             WHERE id = %s
-            """,
-            (
-                allocation.get("portfolio_account_id"), allocation.get("allocated_capital"), allocation.get("allocation_percent"),
-                reserved_at, status, notes, json.dumps(raw_payload, separators=(",", ":"), default=_json_default), self._now(), trade_plan_id,
-            ),
+        """
+        params = (
+            allocation.get("portfolio_account_id"), allocation.get("allocated_capital"), allocation.get("allocation_percent"),
+            reserved_at, status, notes, json.dumps(raw_payload, separators=(",", ":"), default=_json_default), self._now(), trade_plan_id,
         )
+        self._assert_placeholder_count(sql, params)
+        if cursor:
+            cursor.execute(sql, params)
+        else:
+            execute(sql, params)
+
+    def _assert_placeholder_count(self, sql: str, params: tuple):
+        placeholder_count = sql.count("%s")
+        if placeholder_count != len(params):
+            raise ValueError(f"SQL placeholder mismatch: {placeholder_count} placeholders, {len(params)} params")
 
     def _loads(self, value):
         if isinstance(value, dict):
