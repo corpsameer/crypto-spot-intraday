@@ -54,11 +54,17 @@ class PortfolioReleaseManager:
         portfolio_account_id = trade_plan.get("portfolio_account_id")
         if not trade_plan_id or not portfolio_account_id or allocated <= 0:
             return {"released": False, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "reason": "missing_required_fields"}
+        if trade_plan.get("capital_released_at"):
+            return {"released": False, "already_released": True, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "portfolio_account_id": portfolio_account_id, "released_amount": float(allocated), "reason": "capital_released_at_present"}
+
+        linked_trade = fetch_one("SELECT id FROM simulated_trades WHERE trade_plan_id = %s LIMIT 1", (trade_plan_id,))
+        if linked_trade:
+            return {"released": False, "skipped_with_trade": True, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "simulated_trade_id": linked_trade.get("id"), "portfolio_account_id": portfolio_account_id, "reason": "simulated_trade_exists"}
 
         existing_tx = fetch_one("SELECT id FROM portfolio_transactions WHERE trade_plan_id = %s AND transaction_type = 'capital_released' LIMIT 1", (trade_plan_id,))
         if existing_tx:
             self._mark_plan_released_if_safe(trade_plan_id)
-            return {"released": False, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "portfolio_account_id": portfolio_account_id, "released_amount": float(allocated), "transaction_type": "capital_released", "reason": "capital_released_transaction_exists"}
+            return {"released": False, "already_released": True, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "portfolio_account_id": portfolio_account_id, "released_amount": float(allocated), "transaction_type": "capital_released", "reason": "capital_released_transaction_exists"}
 
         account = fetch_one("SELECT * FROM portfolio_accounts WHERE id = %s LIMIT 1", (portfolio_account_id,))
         if not account:
@@ -67,7 +73,7 @@ class PortfolioReleaseManager:
         now = self._now()
         old_reserved = _decimal(account.get("reserved_cash")); new_reserved = max(old_reserved - allocated, Decimal("0"))
         current_cash = _decimal(account.get("current_cash")); deployed = _decimal(account.get("deployed_capital")); realized = _decimal(account.get("realized_pnl"))
-        payload = {"source": SERVICE_NAME, "release_reason": "expired_untriggered_plan", "symbol": trade_plan.get("coindcx_symbol") or "", "allocated_capital": float(allocated)}
+        payload = {"source": SERVICE_NAME, "release_reason": "expired_untriggered_trade_plan", "symbol": trade_plan.get("coindcx_symbol") or "", "allocated_capital": float(allocated), "scan_run_id": trade_plan.get("scan_run_id") or 0, "status": trade_plan.get("status") or "expired", "portfolio_status_before": trade_plan.get("portfolio_status") or "capital_reserved"}
         raw_payload = self._merge_payload(trade_plan.get("raw_payload"), "portfolio_release", payload | {"released_at": now})
         notes = self._merge_payload(trade_plan.get("portfolio_notes"), "portfolio_release", payload | {"released_at": now})
 
@@ -92,7 +98,7 @@ class PortfolioReleaseManager:
                  transaction_time, raw_payload, created_at, updated_at)
                 VALUES (%s,%s,NULL,'capital_released','neutral',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'trade_plan',%s,%s,%s,%s,%s)
                 """,
-                (portfolio_account_id, trade_plan_id, float(allocated), float(current_cash), float(current_cash), float(_money(old_reserved)), float(_money(new_reserved)), float(_money(deployed)), float(_money(deployed)), float(_money(realized)), float(_money(realized)), f"Released reserved capital for expired trade plan {trade_plan.get('coindcx_symbol') or ''}", trade_plan_id, now, json.dumps(payload, separators=(",", ":"), default=_json_default), now, now),
+                (portfolio_account_id, trade_plan_id, float(allocated), float(current_cash), float(current_cash), float(_money(old_reserved)), float(_money(new_reserved)), float(_money(deployed)), float(_money(deployed)), float(_money(realized)), float(_money(realized)), f"Released reserved capital for expired untriggered trade plan {trade_plan.get('coindcx_symbol') or ''}", trade_plan_id, now, json.dumps(payload, separators=(",", ":"), default=_json_default), now, now),
             )
             connection.commit()
         except Exception:
@@ -100,7 +106,7 @@ class PortfolioReleaseManager:
         finally:
             if cursor: cursor.close()
             connection.close()
-        return {"released": True, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "portfolio_account_id": portfolio_account_id, "released_amount": float(allocated), "transaction_type": "capital_released", "reason": "expired_untriggered_plan"}
+        return {"released": True, "type": "expired_trade_plan", "trade_plan_id": trade_plan_id, "portfolio_account_id": portfolio_account_id, "released_amount": float(allocated), "transaction_type": "capital_released", "reason": "expired_untriggered_trade_plan"}
 
     def release_closed_trade(self, simulated_trade: dict) -> dict:
         trade_id = simulated_trade.get("id"); account_id = simulated_trade.get("portfolio_account_id")
@@ -157,14 +163,20 @@ class PortfolioReleaseManager:
         return self.release_all_pending_items(limit=limit)
 
     def release_all_pending_items(self, limit: int = 100) -> dict:
-        summary = {"expired_trade_plans_loaded": 0, "expired_trade_plans_released": 0, "closed_trades_loaded": 0, "closed_trades_released": 0, "capital_released_total": 0.0, "realized_pnl_total": 0.0, "portfolio_accounts_refreshed": 0, "skipped": 0, "errors": []}
+        summary = {"expired_trade_plans_loaded": 0, "expired_trade_plans_released": 0, "expired_trade_plans_already_released": 0, "expired_trade_plans_skipped_with_trade": 0, "expired_trade_plan_capital_released_total": 0.0, "closed_trades_loaded": 0, "closed_trades_released": 0, "closed_trade_realized_pnl_total": 0.0, "portfolio_accounts_refreshed": 0, "capital_released_total": 0.0, "realized_pnl_total": 0.0, "skipped": 0, "errors": []}
         affected_accounts = set()
         plans = self._load_expired_trade_plans(limit); summary["expired_trade_plans_loaded"] = len(plans)
         for plan in plans:
             try:
                 result = self.release_expired_trade_plan(plan)
                 if result.get("released"):
-                    summary["expired_trade_plans_released"] += 1; summary["capital_released_total"] += float(result.get("released_amount") or 0); affected_accounts.add(result.get("portfolio_account_id"))
+                    released_amount = float(result.get("released_amount") or 0)
+                    summary["expired_trade_plans_released"] += 1; summary["expired_trade_plan_capital_released_total"] += released_amount; summary["capital_released_total"] += released_amount; affected_accounts.add(result.get("portfolio_account_id"))
+                elif result.get("already_released"):
+                    summary["expired_trade_plans_already_released"] += 1; summary["skipped"] += 1
+                elif result.get("skipped_with_trade"):
+                    summary["expired_trade_plans_skipped_with_trade"] += 1; summary["skipped"] += 1
+                    summary["errors"].append({"trade_plan_id": plan.get("id"), "warning": "expired reserved plan has a linked simulated trade; skipped capital release"})
                 else: summary["skipped"] += 1
             except Exception as exc:
                 summary["errors"].append({"trade_plan_id": plan.get("id"), "error": str(exc)})
@@ -173,7 +185,7 @@ class PortfolioReleaseManager:
             try:
                 result = self.release_closed_trade(trade)
                 if result.get("released"):
-                    summary["closed_trades_released"] += 1; summary["capital_released_total"] += float(result.get("allocated_capital") or 0); summary["realized_pnl_total"] += float(result.get("net_pnl") or 0); affected_accounts.add(result.get("portfolio_account_id"))
+                    summary["closed_trades_released"] += 1; summary["capital_released_total"] += float(result.get("allocated_capital") or 0); summary["closed_trade_realized_pnl_total"] += float(result.get("net_pnl") or 0); summary["realized_pnl_total"] += float(result.get("net_pnl") or 0); affected_accounts.add(result.get("portfolio_account_id"))
                 else: summary["skipped"] += 1
             except Exception as exc:
                 summary["errors"].append({"simulated_trade_id": trade.get("id"), "error": str(exc)})
@@ -182,7 +194,7 @@ class PortfolioReleaseManager:
                 self.refresh_portfolio_account(int(account_id)); summary["portfolio_accounts_refreshed"] += 1
             except Exception as exc:
                 summary["errors"].append({"portfolio_account_id": account_id, "error": str(exc)})
-        summary["capital_released_total"] = round(summary["capital_released_total"], 2); summary["realized_pnl_total"] = round(summary["realized_pnl_total"], 2)
+        summary["expired_trade_plan_capital_released_total"] = round(summary["expired_trade_plan_capital_released_total"], 2); summary["closed_trade_realized_pnl_total"] = round(summary["closed_trade_realized_pnl_total"], 2); summary["capital_released_total"] = round(summary["capital_released_total"], 2); summary["realized_pnl_total"] = round(summary["realized_pnl_total"], 2)
         status = "error" if summary["errors"] and (summary["expired_trade_plans_released"] + summary["closed_trades_released"] == 0) else ("warning" if summary["errors"] else "ok")
         write_health_log(SERVICE_NAME, status, f"Released capital for {summary['expired_trade_plans_released']} expired plans and {summary['closed_trades_released']} closed trades", summary)
         return summary
@@ -211,7 +223,6 @@ class PortfolioReleaseManager:
             SELECT tp.* FROM trade_plans tp
             WHERE tp.status = 'expired' AND tp.portfolio_status = 'capital_reserved' AND tp.allocated_capital > 0
               AND tp.capital_reserved_at IS NOT NULL AND tp.capital_released_at IS NULL {converted_filter}
-              AND NOT EXISTS (SELECT 1 FROM simulated_trades st WHERE st.trade_plan_id = tp.id LIMIT 1)
             ORDER BY tp.updated_at ASC LIMIT %s
         """, (int(limit),))
 
