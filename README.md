@@ -512,3 +512,40 @@ Run the read-only health report with:
 cd python
 python scripts/check_duplicate_opportunities.py
 ```
+
+## Portfolio reconciliation
+
+Task 52A adds a read-only portfolio accounting audit command:
+
+```bash
+php artisan cryptospot:portfolio-reconcile
+```
+
+The command checks stored `portfolio_accounts` balances against underlying `trade_plans`, `simulated_trades`, and `portfolio_transactions`. Default mode is dry-run/read-only: if `--fix` is not provided, it never updates portfolio balances, trades, plans, transactions, scanner data, or trading logic.
+
+The reconciliation report includes:
+
+- reserved cash mismatches versus reserved, unconverted trade plans;
+- deployed capital and unrealized P&L mismatches versus currently open simulated trades;
+- total equity and return-percent mismatches;
+- expired unreleased trade plans that should be handled by the portfolio release manager;
+- closed unreleased simulated trades that should be handled by the portfolio release manager;
+- duplicate portfolio transactions for reservation, release, entry, and exit events;
+- duplicate active opportunities by symbol across open trades and pending plans;
+- trade plan / simulated trade linkage issues;
+- legacy expired simulated trades, reported as historical artifacts unless new rows are still being created;
+- recent monitor health rows for the scan-cycle expiry manager, portfolio release manager, active trade monitor, trigger monitor, entry simulators, and trailing monitor.
+
+Machine-readable output is available with:
+
+```bash
+php artisan cryptospot:portfolio-reconcile --json
+```
+
+Optional fix mode is available with:
+
+```bash
+php artisan cryptospot:portfolio-reconcile --fix
+```
+
+`--fix` only refreshes derived account totals on `portfolio_accounts` (`reserved_cash`, `deployed_capital`, `unrealized_pnl`, `total_equity`, and `total_return_percent`) from the reconciliation calculations. It does not create/delete portfolio transactions, close trades, release capital, remove duplicates, or alter scan/trade lifecycle rows. Every run writes a `system_health_logs` row with `service_name = portfolio_reconciliation` and a summary payload.
