@@ -6,6 +6,7 @@ use App\Models\CandidateWatchlist;
 use App\Models\DailyGainerLeaderboard;
 use App\Models\MarketSnapshot;
 use App\Models\MissedGainer;
+use App\Services\PortfolioAnalyticsService;
 use App\Models\ScanResult;
 use App\Models\ScanRun;
 use App\Models\SimulatedTrade;
@@ -17,7 +18,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke(): View
+    public function __invoke(PortfolioAnalyticsService $portfolioAnalytics): View
     {
         $openTradeStatuses = ['active', 'tp1_hit', 'tp2_hit', 'trailing_active'];
         $closedTradeStatuses = ['closed_sl', 'closed_trailing', 'closed_tp1', 'closed_tp2', 'expired', 'cancelled', 'error'];
@@ -122,6 +123,10 @@ class DashboardController extends Controller
             ? SystemHealthLog::query()->orderByDesc('checked_at')->orderByDesc('id')->limit(100)->get()->unique('service_name')->values()
             : collect();
 
+        $activePortfolio = $portfolioAnalytics->getActivePortfolio();
+        $portfolioSummary = $activePortfolio ? $portfolioAnalytics->getSummary($activePortfolio) : null;
+        $portfolioCapitalUsage = $activePortfolio ? $portfolioAnalytics->getCapitalUsage($activePortfolio) : null;
+
         return view('dashboard', [
             'dashboard' => compact(
                 'latestScan',
@@ -134,7 +139,9 @@ class DashboardController extends Controller
                 'latestMissedGainers',
                 'latestOpenTrades',
                 'latestTradeEvents',
-                'latestHealth'
+                'latestHealth',
+                'portfolioSummary',
+                'portfolioCapitalUsage'
             ),
         ]);
     }

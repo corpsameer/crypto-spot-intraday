@@ -478,3 +478,12 @@ These settings are intentionally not enforced until the portfolio gate tasks are
 Watchlist candidates are valid only for the scan cycle that created them. Pending or watching trade plans are valid only until the next successful full scan creates a newer `scan_runs` row. When a new scan starts, `scan_cycle_expiry_manager` marks old unexecuted watchlist candidates and old unconverted pending/watching trade plans as `expired` with reason `new_scan_replaced`.
 
 Scan-cycle expiry never updates `simulated_trades`. Open simulated trades do not expire by time or by scan cycle; they close only through SL, TP/trailing, or a later manual-close workflow if implemented. Triggered trade plans are intentionally not expired by scan-cycle cleanup so the realtime entry simulators can convert them without a race. Reserved capital on expired untriggered plans is not released by this workflow and is deferred to a later portfolio release task.
+
+## Portfolio dashboard
+
+The read-only Portfolio dashboard is available at `/cryptospot/portfolio` for logged-in users. It shows the INR paper portfolio used by the portfolio-aware simulation workflow.
+
+- The default starting capital is ₹100,000.
+- The page shows current cash, reserved cash, deployed capital, realized P&L, unrealized P&L, total equity, total return, monthly capital growth, open portfolio trades, pending reserved trade plans, recently closed trades, recent portfolio transactions, and allocation summaries by setup, score bucket, and symbol.
+- The dashboard is read-only: it does not reserve capital, release capital, edit balances, place trades, or call private exchange APIs.
+- Reconciliation warnings may appear if stored account totals differ from currently calculated open-trade or reserved-plan totals. Run the realtime monitor/release manager to refresh portfolio state before interpreting those warnings as accounting issues.

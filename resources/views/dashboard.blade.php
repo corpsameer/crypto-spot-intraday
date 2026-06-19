@@ -9,6 +9,9 @@
         $trades = $dashboard['simulatedTradeStats'];
         $daily = $dashboard['dailyGainerStats'];
         $missed = $dashboard['missedGainerStats'];
+        $portfolioSummary = $dashboard['portfolioSummary'] ?? null;
+        $portfolioCapitalUsage = $dashboard['portfolioCapitalUsage'] ?? null;
+        $fmtInr = fn ($value) => $value === null ? '-' : '₹' . number_format((float) $value, 2);
         $fmtNum = fn ($value) => $value === null ? '-' : number_format((float) $value);
         $fmtPct = fn ($value) => $value === null ? '-' : number_format((float) $value, 2) . '%';
         $fmtPrice = fn ($value) => $value === null ? '-' : rtrim(rtrim(number_format((float) $value, 12), '0'), '.');
@@ -34,6 +37,7 @@
             <a class="secondary-button" href="{{ route('cryptospot.scans.latest') }}">Latest Scanner</a>
             <a class="secondary-button" href="{{ route('cryptospot.trade-plans.index') }}">Watchlist / Trade Plans</a>
             <a class="secondary-button" href="{{ route('cryptospot.simulated-trades.index') }}">Simulated Trades</a>
+            <a class="secondary-button" href="{{ route('cryptospot.portfolio.index') }}">Portfolio</a>
             <a class="secondary-button" href="{{ route('cryptospot.daily-review.index') }}">Daily Review</a>
             <a class="secondary-button" href="{{ route('cryptospot.daily-gainers.index') }}">Daily Gainers</a>
             <a class="secondary-button" href="{{ route('cryptospot.missed-gainers.index') }}">Missed Gainers</a>
@@ -44,6 +48,26 @@
             <a class="secondary-button" href="{{ route('cryptospot.system-health.index') }}">System Health</a>
         </div>
     </header>
+
+
+    <section class="section-card" aria-label="Portfolio summary">
+        <h2>Portfolio Summary</h2>
+        @if ($portfolioSummary)
+            <div class="grid metric-grid">
+                <article class="card metric-card"><span>Total equity</span><strong>{{ $fmtInr($portfolioSummary['total_equity']) }}</strong></article>
+                <article class="card metric-card"><span>Total return</span><strong>{{ $fmtPct($portfolioSummary['total_return_percent']) }}</strong></article>
+                <article class="card metric-card"><span>Current cash</span><strong>{{ $fmtInr($portfolioSummary['current_cash']) }}</strong></article>
+                <article class="card metric-card"><span>Reserved cash</span><strong>{{ $fmtInr($portfolioSummary['reserved_cash']) }}</strong></article>
+                <article class="card metric-card"><span>Deployed capital</span><strong>{{ $fmtInr($portfolioSummary['deployed_capital']) }}</strong></article>
+                <article class="card metric-card"><span>Unrealized P&amp;L</span><strong>{{ $fmtInr($portfolioSummary['unrealized_pnl']) }}</strong></article>
+                <article class="card metric-card"><span>Realized P&amp;L</span><strong>{{ $fmtInr($portfolioSummary['realized_pnl']) }}</strong></article>
+                <article class="card metric-card"><span>Open opportunities used</span><strong>{{ $portfolioCapitalUsage['total_open_opportunities'] ?? 0 }} / {{ $portfolioCapitalUsage['max_total_open_opportunities'] ?? 0 }}</strong></article>
+            </div>
+            <p><a class="secondary-button" href="{{ route('cryptospot.portfolio.index') }}">View Portfolio</a></p>
+        @else
+            <p class="muted">No active portfolio account found.</p>
+        @endif
+    </section>
 
     <section class="section-card" aria-label="Latest scan snapshot">
         <h2>Latest Scan Snapshot</h2>
