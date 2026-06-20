@@ -174,8 +174,14 @@ class BreakoutEntrySimulator:
                      notes, raw_payload, created_at, updated_at)
                 VALUES
                     (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'long', 'active', 'trade_plan',
-                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, %s,
-                     %s, %s, %s, 0, 0, 0, NULL, %s, %s, %s, 'breakout', %s, %s, %s, %s)
+                     %s, %s, %s, %s,
+                     %s, %s, %s, %s, %s, %s,
+                     %s, %s, %s, %s, %s,
+                     %s, %s, %s, %s, NULL,
+                     %s, %s, %s, 0,
+                     %s, %s, %s, 0, 0,
+                     0, NULL, %s, %s, %s, 'breakout',
+                     %s, %s, %s, %s)
                 """,
                 (
                     plan.get("scan_run_id"), plan.get("scan_result_id"), plan.get("candidate_watchlist_id"), plan_id,
@@ -189,7 +195,7 @@ class BreakoutEntrySimulator:
                     self._portfolio_value(portfolio_fields, "fees_amount"), self._portfolio_value(portfolio_fields, "net_pnl_amount"),
                     self._portfolio_value(portfolio_fields, "capital_released_at"), plan.get("tp1_price"),
                     plan.get("tp2_price"), plan.get("sl_price"), plan.get("trailing_start_price"), plan.get("tp1_percent"),
-                    plan.get("tp2_percent"), plan.get("sl_percent"), False, entry_price, entry_price, entry_price,
+                    plan.get("tp2_percent"), plan.get("sl_percent"), entry_price, entry_price, entry_price,
                     plan.get("expires_at"), plan.get("score"), plan.get("score_label"), SIMULATION_NOTE,
                     json.dumps(trade_payload, separators=(",", ":"), default=self._json_default), now, now,
                 ),
