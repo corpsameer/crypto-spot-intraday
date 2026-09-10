@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SimulatedTrade extends Model
 {
@@ -142,4 +143,5 @@ class SimulatedTrade extends Model
     public function events(): HasMany { return $this->hasMany(TradeEvent::class); }
     public function tradeEvents(): HasMany { return $this->events(); }
     public function portfolioAccount(): BelongsTo { return $this->belongsTo(PortfolioAccount::class); }
+    public function recoveryAnalysis(): HasOne { return $this->hasOne(SpotTradeRecoveryAnalysis::class); }
 }
